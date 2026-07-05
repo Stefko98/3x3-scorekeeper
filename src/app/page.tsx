@@ -24,12 +24,12 @@ export default function Home() {
           </h2>
         </div>
         <div className="flex flex-wrap gap-3">
-          <a
+          <Link
             className="inline-flex h-11 items-center justify-center rounded-md bg-[#F97316] px-4 text-sm font-bold text-[#111827] transition hover:bg-[#FACC15]"
-            href="#"
+            href="/tournaments"
           >
             Novi turnir
-          </a>
+          </Link>
           <Link
             className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
             href="/live-score"

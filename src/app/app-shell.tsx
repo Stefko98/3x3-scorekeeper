@@ -3,6 +3,7 @@ import { modules } from "./dashboard-data";
 
 const moduleLinks: Record<string, string> = {
   Dashboard: "/",
+  Turniri: "/tournaments",
   "Live Score": "/live-score",
 };
 
