@@ -1,263 +1,310 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {
+  saveMatches,
+  useMatches,
+  type Match,
+  type MatchStatus,
+} from "../matches/match-store";
+import {
+  getPlayerDisplayName,
+  usePlayers,
+  type Player,
+} from "../players/player-store";
+import { useTeams, type Team } from "../teams/team-store";
+import { useTournaments } from "../tournaments/tournament-store";
+import {
+  saveMatchEvents,
+  useMatchEvents,
+  type MatchEvent,
+  type MatchEventType,
+} from "./match-event-store";
 
-type TeamId = "team-a" | "team-b";
-type MatchStatus = "SCHEDULED" | "LIVE" | "PAUSED" | "FINISHED";
-type MatchEventType =
-  | "POINT"
-  | "FOUL"
-  | "START_MATCH"
-  | "PAUSE_MATCH"
-  | "RESUME_MATCH"
-  | "FINISH_MATCH"
-  | "DELETE_EVENT";
-
-type Player = {
-  id: string;
-  teamId: TeamId;
-  number: number;
-  name: string;
+type LiveScoreClientProps = {
+  initialMatchId?: string;
 };
 
-type Team = {
-  id: TeamId;
-  name: string;
-  city: string;
-  players: Player[];
+type ScoreBySide = {
+  teamA: number;
+  teamB: number;
 };
 
-type MatchEvent = {
-  id: string;
-  type: MatchEventType;
-  teamId?: TeamId;
-  playerId?: string;
-  points?: 1 | 2;
-  clock: string;
-  createdAt: string;
-  description?: string;
-  isDeleted: boolean;
-  deletedEventId?: string;
-};
-
-const teams: Team[] = [
-  {
-    id: "team-a",
-    name: "Belgrade Wolves",
-    city: "Belgrade",
-    players: [
-      { id: "a-7", teamId: "team-a", number: 7, name: "Marko Markovic" },
-      { id: "a-11", teamId: "team-a", number: 11, name: "Nikola Petrovic" },
-      { id: "a-23", teamId: "team-a", number: 23, name: "Stefan Jovanovic" },
-      { id: "a-32", teamId: "team-a", number: 32, name: "Milos Djuric" },
-    ],
-  },
-  {
-    id: "team-b",
-    name: "Novi Sad Tigers",
-    city: "Novi Sad",
-    players: [
-      { id: "b-3", teamId: "team-b", number: 3, name: "Luka Ilic" },
-      { id: "b-9", teamId: "team-b", number: 9, name: "Petar Simic" },
-      { id: "b-15", teamId: "team-b", number: 15, name: "Ivan Kostic" },
-      { id: "b-21", teamId: "team-b", number: 21, name: "Vuk Ristic" },
-    ],
-  },
-];
-
-const playerMap = new Map(
-  teams.flatMap((team) => team.players.map((player) => [player.id, player])),
-);
-
-const teamMap = new Map(teams.map((team) => [team.id, team]));
-
-const initialEvents: MatchEvent[] = [
-  {
-    id: "seed-start",
-    type: "START_MATCH",
-    clock: "10:00",
-    createdAt: "14:00:00",
-    description: "Utakmica je pokrenuta",
-    isDeleted: false,
-  },
-  {
-    id: "seed-a-1",
-    type: "POINT",
-    teamId: "team-a",
-    playerId: "a-7",
-    points: 2,
-    clock: "09:22",
-    createdAt: "14:00:38",
-    isDeleted: false,
-  },
-  {
-    id: "seed-b-1",
-    type: "POINT",
-    teamId: "team-b",
-    playerId: "b-3",
-    points: 1,
-    clock: "08:54",
-    createdAt: "14:01:06",
-    isDeleted: false,
-  },
-  {
-    id: "seed-a-2",
-    type: "FOUL",
-    teamId: "team-a",
-    playerId: "a-11",
-    clock: "08:10",
-    createdAt: "14:01:50",
-    isDeleted: false,
-  },
-  {
-    id: "seed-b-2",
-    type: "POINT",
-    teamId: "team-b",
-    playerId: "b-9",
-    points: 2,
-    clock: "07:44",
-    createdAt: "14:02:16",
-    isDeleted: false,
-  },
-  {
-    id: "seed-a-3",
-    type: "POINT",
-    teamId: "team-a",
-    playerId: "a-23",
-    points: 1,
-    clock: "07:12",
-    createdAt: "14:02:48",
-    isDeleted: false,
-  },
-];
-
-const initialSeconds = 6 * 60 + 42;
 const pointLimit = 21;
 const foulLimit = 6;
+const matchLengthSeconds = 10 * 60;
 
-export function LiveScoreClient() {
-  const [events, setEvents] = useState<MatchEvent[]>(initialEvents);
-  const [matchStatus, setMatchStatus] = useState<MatchStatus>("LIVE");
-  const [remainingSeconds, setRemainingSeconds] = useState(initialSeconds);
+export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
+  const matchEvents = useMatchEvents();
+  const matches = useMatches();
+  const players = usePlayers();
+  const teams = useTeams();
+  const tournaments = useTournaments();
+  const [clockByMatch, setClockByMatch] = useState<Record<string, number>>({});
+  const [selectedMatchId, setSelectedMatchId] = useState(initialMatchId ?? "");
 
-  const score = useMemo(() => calculateScore(events), [events]);
-  const fouls = useMemo(() => calculateFouls(events), [events]);
-  const playerStats = useMemo(() => calculatePlayerStats(events), [events]);
+  const availableMatches = useMemo(
+    () => matches.filter((match) => match.status !== "CANCELLED"),
+    [matches],
+  );
+  const selectedMatch =
+    availableMatches.find((match) => match.id === selectedMatchId) ??
+    availableMatches.find((match) => match.status === "LIVE") ??
+    availableMatches.find((match) => match.status === "PAUSED") ??
+    availableMatches.find((match) => match.status === "SCHEDULED") ??
+    availableMatches[0];
+
+  const teamA = selectedMatch
+    ? teams.find((team) => team.id === selectedMatch.teamAId)
+    : undefined;
+  const teamB = selectedMatch
+    ? teams.find((team) => team.id === selectedMatch.teamBId)
+    : undefined;
+  const tournament = selectedMatch
+    ? tournaments.find((item) => item.id === selectedMatch.tournamentId)
+    : undefined;
+  const playersA = selectedMatch
+    ? players
+        .filter((player) => player.teamId === selectedMatch.teamAId)
+        .sort((a, b) => a.jerseyNumber - b.jerseyNumber)
+    : [];
+  const playersB = selectedMatch
+    ? players
+        .filter((player) => player.teamId === selectedMatch.teamBId)
+        .sort((a, b) => a.jerseyNumber - b.jerseyNumber)
+    : [];
+  const eventsForMatch = useMemo(
+    () =>
+      selectedMatch
+        ? matchEvents.filter((event) => event.matchId === selectedMatch.id)
+        : [],
+    [matchEvents, selectedMatch],
+  );
+  const teamMap = useMemo(
+    () => new Map(teams.map((team) => [team.id, team])),
+    [teams],
+  );
+  const playerMap = useMemo(
+    () => new Map(players.map((player) => [player.id, player])),
+    [players],
+  );
+  const score = selectedMatch
+    ? calculateScore(eventsForMatch, selectedMatch)
+    : { teamA: 0, teamB: 0 };
+  const fouls = selectedMatch
+    ? calculateFouls(eventsForMatch, selectedMatch)
+    : { teamA: 0, teamB: 0 };
+  const playerStats = calculatePlayerStats(eventsForMatch);
+  const remainingSeconds = selectedMatch
+    ? clockByMatch[selectedMatch.id] ?? matchLengthSeconds
+    : matchLengthSeconds;
   const clock = formatClock(remainingSeconds);
-  const canEdit = matchStatus === "LIVE" && remainingSeconds > 0;
-  const isFinished = matchStatus === "FINISHED";
-
+  const canEdit =
+    selectedMatch?.status === "LIVE" &&
+    remainingSeconds > 0 &&
+    Boolean(teamA && teamB);
+  const isFinished = selectedMatch?.status === "FINISHED";
   const lastEditableEvent = useMemo(
     () =>
-      [...events]
+      [...eventsForMatch]
         .reverse()
         .find(
           (event) =>
             !event.isDeleted && (event.type === "POINT" || event.type === "FOUL"),
         ),
-    [events],
-  );
-
-  const finishMatch = useCallback(
-    (reason?: string) => {
-      if (matchStatus === "FINISHED" || matchStatus === "SCHEDULED") {
-        return;
-      }
-
-      const winnerText = getWinnerText(score);
-      setMatchStatus("FINISHED");
-      setEvents((currentEvents) => [
-        ...currentEvents,
-        createEvent({
-          type: "FINISH_MATCH",
-          clock,
-          description: reason
-            ? `${reason}. ${winnerText}`
-            : `Utakmica je zavrsena. ${winnerText}`,
-        }),
-      ]);
-    },
-    [clock, matchStatus, score],
+    [eventsForMatch],
   );
 
   useEffect(() => {
-    if (matchStatus !== "LIVE" || remainingSeconds <= 0) {
+    if (!selectedMatch || selectedMatch.status !== "LIVE") {
       return;
     }
 
     const timerId = window.setInterval(() => {
-      setRemainingSeconds((seconds) => Math.max(0, seconds - 1));
+      setClockByMatch((currentClock) => {
+        const currentSeconds =
+          currentClock[selectedMatch.id] ?? matchLengthSeconds;
+
+        return {
+          ...currentClock,
+          [selectedMatch.id]: Math.max(0, currentSeconds - 1),
+        };
+      });
     }, 1000);
 
     return () => window.clearInterval(timerId);
-  }, [matchStatus, remainingSeconds]);
+  }, [selectedMatch]);
 
-  function addPointEvent(playerId: string, points: 1 | 2) {
-    if (!canEdit) {
+  function saveEventsAndMatch(
+    nextEventsForMatch: MatchEvent[],
+    nextStatus?: MatchStatus,
+  ) {
+    if (!selectedMatch) {
       return;
     }
 
-    const player = playerMap.get(playerId);
-    if (!player) {
-      return;
-    }
+    const nextScore = calculateScore(nextEventsForMatch, selectedMatch);
+    const nextFouls = calculateFouls(nextEventsForMatch, selectedMatch);
+    const now = new Date().toISOString();
+    const status = nextStatus ?? selectedMatch.status;
 
-    const nextPointEvent = createEvent({
-      type: "POINT",
-      teamId: player.teamId,
-      playerId: player.id,
-      points,
-      clock,
-    });
-
-    setEvents((currentEvents) => {
-      const nextEvents = [...currentEvents, nextPointEvent];
-      const nextScore = calculateScore(nextEvents);
-      const teamScore = nextScore[player.teamId];
-
-      if (teamScore >= pointLimit) {
-        setMatchStatus("FINISHED");
-        return [
-          ...nextEvents,
-          createEvent({
-            type: "FINISH_MATCH",
-            clock,
-            description: `${getTeamName(player.teamId)} je stigao do ${pointLimit} poena.`,
-          }),
-        ];
-      }
-
-      return nextEvents;
-    });
+    saveMatchEvents([
+      ...matchEvents.filter((event) => event.matchId !== selectedMatch.id),
+      ...nextEventsForMatch,
+    ]);
+    saveMatches(
+      matches.map((match) =>
+        match.id === selectedMatch.id
+          ? {
+              ...match,
+              finishedAt: status === "FINISHED" ? now : match.finishedAt,
+              foulsA: nextFouls.teamA,
+              foulsB: nextFouls.teamB,
+              scoreA: nextScore.teamA,
+              scoreB: nextScore.teamB,
+              startedAt:
+                status === "LIVE" && !match.startedAt ? now : match.startedAt,
+              status,
+              updatedAt: now,
+              winnerTeamId:
+                status === "FINISHED"
+                  ? getWinnerTeamId(nextScore, selectedMatch)
+                  : match.winnerTeamId,
+            }
+          : match,
+      ),
+    );
   }
 
-  function addFoulEvent(playerId: string) {
-    if (!canEdit) {
+  function appendControlEvent(
+    type: MatchEventType,
+    status: MatchStatus,
+    description: string,
+  ) {
+    if (!selectedMatch) {
       return;
     }
 
-    const player = playerMap.get(playerId);
-    if (!player) {
+    saveEventsAndMatch(
+      [
+        ...eventsForMatch,
+        createEvent(selectedMatch, {
+          clock,
+          description,
+          type,
+        }),
+      ],
+      status,
+    );
+  }
+
+  function startMatch() {
+    if (!selectedMatch || selectedMatch.status !== "SCHEDULED") {
       return;
     }
 
-    setEvents((currentEvents) => [
-      ...currentEvents,
-      createEvent({
-        type: "FOUL",
-        teamId: player.teamId,
-        playerId: player.id,
+    setClockByMatch((currentClock) => ({
+      ...currentClock,
+      [selectedMatch.id]: currentClock[selectedMatch.id] ?? matchLengthSeconds,
+    }));
+    appendControlEvent("START_MATCH", "LIVE", "Utakmica je pokrenuta");
+  }
+
+  function pauseMatch() {
+    if (!selectedMatch || selectedMatch.status !== "LIVE") {
+      return;
+    }
+
+    appendControlEvent("PAUSE_MATCH", "PAUSED", "Utakmica je pauzirana");
+  }
+
+  function resumeMatch() {
+    if (!selectedMatch || selectedMatch.status !== "PAUSED") {
+      return;
+    }
+
+    appendControlEvent("RESUME_MATCH", "LIVE", "Utakmica je nastavljena");
+  }
+
+  function finishMatch(reason?: string) {
+    if (
+      !selectedMatch ||
+      selectedMatch.status === "SCHEDULED" ||
+      selectedMatch.status === "FINISHED"
+    ) {
+      return;
+    }
+
+    appendControlEvent(
+      "FINISH_MATCH",
+      "FINISHED",
+      reason
+        ? `${reason}. ${getWinnerText(score, selectedMatch, teamMap)}`
+        : `Utakmica je zavrsena. ${getWinnerText(score, selectedMatch, teamMap)}`,
+    );
+  }
+
+  function addPointEvent(player: Player, points: 1 | 2) {
+    if (!selectedMatch || !canEdit) {
+      return;
+    }
+
+    const nextPointEvent = createEvent(selectedMatch, {
+      clock,
+      playerId: player.id,
+      points,
+      teamId: player.teamId,
+      type: "POINT",
+    });
+    const nextEvents = [...eventsForMatch, nextPointEvent];
+    const nextScore = calculateScore(nextEvents, selectedMatch);
+    const teamScore =
+      player.teamId === selectedMatch.teamAId
+        ? nextScore.teamA
+        : nextScore.teamB;
+
+    if (teamScore >= pointLimit) {
+      saveEventsAndMatch(
+        [
+          ...nextEvents,
+          createEvent(selectedMatch, {
+            clock,
+            description: `${getTeamName(player.teamId, teamMap)} je stigao do ${pointLimit} poena.`,
+            type: "FINISH_MATCH",
+          }),
+        ],
+        "FINISHED",
+      );
+      return;
+    }
+
+    saveEventsAndMatch(nextEvents);
+  }
+
+  function addFoulEvent(player: Player) {
+    if (!selectedMatch || !canEdit) {
+      return;
+    }
+
+    saveEventsAndMatch([
+      ...eventsForMatch,
+      createEvent(selectedMatch, {
         clock,
+        playerId: player.id,
+        teamId: player.teamId,
+        type: "FOUL",
       }),
     ]);
   }
 
   function deleteEvent(eventId: string) {
-    if (isFinished) {
+    if (!selectedMatch || isFinished) {
       return;
     }
 
-    const targetEvent = events.find((event) => event.id === eventId);
+    const targetEvent = eventsForMatch.find((event) => event.id === eventId);
+
     if (
       !targetEvent ||
       targetEvent.isDeleted ||
@@ -266,71 +313,49 @@ export function LiveScoreClient() {
       return;
     }
 
-    setEvents((currentEvents) => [
-      ...currentEvents.map((event) =>
+    saveEventsAndMatch([
+      ...eventsForMatch.map((event) =>
         event.id === eventId ? { ...event, isDeleted: true } : event,
       ),
-      createEvent({
-        type: "DELETE_EVENT",
+      createEvent(selectedMatch, {
         clock,
         deletedEventId: eventId,
-        description: `Ispravljen unos: ${getEventText(targetEvent)}`,
+        description: `Ispravljen unos: ${getEventText(
+          targetEvent,
+          teamMap,
+          playerMap,
+        )}`,
+        type: "DELETE_EVENT",
       }),
     ]);
   }
 
-  function startMatch() {
-    if (matchStatus !== "SCHEDULED") {
-      return;
-    }
-
-    setMatchStatus("LIVE");
-    setEvents((currentEvents) => [
-      ...currentEvents,
-      createEvent({
-        type: "START_MATCH",
-        clock,
-        description: "Utakmica je pokrenuta",
-      }),
-    ]);
+  if (availableMatches.length === 0) {
+    return (
+      <div>
+        <LiveHeader title="Live Score" />
+        <EmptyState
+          actionHref="/matches"
+          actionText="Zakazi utakmicu"
+          text="Live score radi sa pravim utakmicama. Prvo napravi mec u modulu Utakmice."
+          title="Nema utakmica za live score"
+        />
+      </div>
+    );
   }
 
-  function pauseMatch() {
-    if (matchStatus !== "LIVE") {
-      return;
-    }
-
-    setMatchStatus("PAUSED");
-    setEvents((currentEvents) => [
-      ...currentEvents,
-      createEvent({
-        type: "PAUSE_MATCH",
-        clock,
-        description: "Utakmica je pauzirana",
-      }),
-    ]);
-  }
-
-  function resumeMatch() {
-    if (matchStatus !== "PAUSED") {
-      return;
-    }
-
-    setMatchStatus("LIVE");
-    setEvents((currentEvents) => [
-      ...currentEvents,
-      createEvent({
-        type: "RESUME_MATCH",
-        clock,
-        description: "Utakmica je nastavljena",
-      }),
-    ]);
-  }
-
-  function resetMatch() {
-    setEvents(initialEvents);
-    setMatchStatus("LIVE");
-    setRemainingSeconds(initialSeconds);
+  if (!selectedMatch || !teamA || !teamB) {
+    return (
+      <div>
+        <LiveHeader title="Live Score" />
+        <EmptyState
+          actionHref="/matches"
+          actionText="Proveri raspored"
+          text="Ova utakmica nema kompletne podatke o ekipama."
+          title="Nedostaju podaci za utakmicu"
+        />
+      </div>
+    );
   }
 
   return (
@@ -338,17 +363,29 @@ export function LiveScoreClient() {
       <header className="flex flex-col gap-4 border-b border-white/10 pb-5 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-sm font-medium text-[#94A3B8]">
-            Downtown 3x3 Classic / Court 1
+            {tournament?.name ?? "Turnir"} / {selectedMatch.courtName}
           </p>
           <h2 className="mt-1 text-3xl font-bold tracking-normal">
             Live Score
           </h2>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_repeat(4,110px)]">
+          <select
+            className="h-11 rounded-md border border-white/10 bg-[#111827] px-3 text-sm font-semibold text-white outline-none transition focus:border-[#F97316]"
+            onChange={(event) => setSelectedMatchId(event.target.value)}
+            value={selectedMatch.id}
+          >
+            {availableMatches.map((match) => (
+              <option key={match.id} value={match.id}>
+                {getTeamName(match.teamAId, teamMap)} vs{" "}
+                {getTeamName(match.teamBId, teamMap)}
+              </option>
+            ))}
+          </select>
           <button
             className="h-11 rounded-md bg-[#22C55E] px-4 text-sm font-black text-[#052E16] transition hover:bg-[#86EFAC] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-[#94A3B8]"
-            disabled={matchStatus !== "SCHEDULED"}
+            disabled={selectedMatch.status !== "SCHEDULED"}
             onClick={startMatch}
             type="button"
           >
@@ -356,7 +393,7 @@ export function LiveScoreClient() {
           </button>
           <button
             className="h-11 rounded-md border border-white/15 px-4 text-sm font-black text-white transition hover:border-[#FACC15] hover:text-[#FACC15] disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={matchStatus !== "LIVE"}
+            disabled={selectedMatch.status !== "LIVE"}
             onClick={pauseMatch}
             type="button"
           >
@@ -364,7 +401,7 @@ export function LiveScoreClient() {
           </button>
           <button
             className="h-11 rounded-md border border-white/15 px-4 text-sm font-black text-white transition hover:border-[#22C55E] hover:text-[#86EFAC] disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={matchStatus !== "PAUSED"}
+            disabled={selectedMatch.status !== "PAUSED"}
             onClick={resumeMatch}
             type="button"
           >
@@ -372,7 +409,10 @@ export function LiveScoreClient() {
           </button>
           <button
             className="h-11 rounded-md border border-[#EF4444]/70 px-4 text-sm font-black text-[#FCA5A5] transition hover:bg-[#EF4444] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={matchStatus === "SCHEDULED" || matchStatus === "FINISHED"}
+            disabled={
+              selectedMatch.status === "SCHEDULED" ||
+              selectedMatch.status === "FINISHED"
+            }
             onClick={() => finishMatch()}
             type="button"
           >
@@ -385,29 +425,33 @@ export function LiveScoreClient() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px_minmax(0,1fr)]">
           <TeamScorePanel
             canEdit={canEdit}
-            fouls={fouls["team-a"]}
+            fouls={fouls.teamA}
             onAddFoul={addFoulEvent}
             onAddPoint={addPointEvent}
             playerStats={playerStats}
-            score={score["team-a"]}
-            team={teams[0]}
+            players={playersA}
+            score={score.teamA}
+            sideLabel="Team A"
+            team={teamA}
           />
 
           <Scoreboard
             clock={clock}
             fouls={fouls}
-            matchStatus={matchStatus}
+            matchStatus={selectedMatch.status}
             score={score}
           />
 
           <TeamScorePanel
             canEdit={canEdit}
-            fouls={fouls["team-b"]}
+            fouls={fouls.teamB}
             onAddFoul={addFoulEvent}
             onAddPoint={addPointEvent}
             playerStats={playerStats}
-            score={score["team-b"]}
-            team={teams[1]}
+            players={playersB}
+            score={score.teamB}
+            sideLabel="Team B"
+            team={teamB}
           />
         </div>
       </section>
@@ -420,26 +464,17 @@ export function LiveScoreClient() {
                 Kontrola zapisnika
               </h3>
               <p className="mt-1 text-sm text-[#94A3B8]">
-                Rezultat se racuna iz svih aktivnih dogadjaja.
+                Rezultat se racuna iz aktivnih dogadjaja za ovu utakmicu.
               </p>
             </div>
-            <div className="flex gap-2">
-              <button
-                className="h-10 rounded-md border border-white/15 px-3 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15] disabled:cursor-not-allowed disabled:opacity-40"
-                disabled={!lastEditableEvent || isFinished}
-                onClick={() => lastEditableEvent && deleteEvent(lastEditableEvent.id)}
-                type="button"
-              >
-                Undo last
-              </button>
-              <button
-                className="h-10 rounded-md border border-white/15 px-3 text-sm font-bold text-[#CBD5E1] transition hover:border-[#94A3B8] hover:text-white"
-                onClick={resetMatch}
-                type="button"
-              >
-                Reset demo
-              </button>
-            </div>
+            <button
+              className="h-10 rounded-md border border-white/15 px-3 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15] disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!lastEditableEvent || isFinished}
+              onClick={() => lastEditableEvent && deleteEvent(lastEditableEvent.id)}
+              type="button"
+            >
+              Undo last
+            </button>
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -447,12 +482,18 @@ export function LiveScoreClient() {
             <Metric label="Faul limit" value={foulLimit.toString()} />
             <Metric
               label="Status"
-              value={matchStatus}
-              valueClassName={statusColor(matchStatus)}
+              value={selectedMatch.status}
+              valueClassName={statusColor(selectedMatch.status)}
             />
           </div>
 
-          {!canEdit && (
+          {(playersA.length === 0 || playersB.length === 0) && (
+            <p className="mt-4 rounded-md border border-[#FACC15]/30 bg-[#FACC15]/10 px-3 py-2 text-sm font-semibold text-[#FDE68A]">
+              Dodaj igrace za obe ekipe da bi dugmad za poene bila korisna.
+            </p>
+          )}
+
+          {!canEdit && selectedMatch.status !== "LIVE" && (
             <p className="mt-4 rounded-md border border-[#FACC15]/30 bg-[#FACC15]/10 px-3 py-2 text-sm font-semibold text-[#FDE68A]">
               Dugmad za poene i faulove su aktivna samo dok je utakmica LIVE.
             </p>
@@ -460,12 +501,23 @@ export function LiveScoreClient() {
         </section>
 
         <EventLog
-          events={events}
-          isFinished={isFinished}
+          events={eventsForMatch}
+          isFinished={Boolean(isFinished)}
           onDeleteEvent={deleteEvent}
+          playerMap={playerMap}
+          teamMap={teamMap}
         />
       </div>
     </div>
+  );
+}
+
+function LiveHeader({ title }: { title: string }) {
+  return (
+    <header className="border-b border-white/10 pb-5">
+      <p className="text-sm font-medium text-[#94A3B8]">Live scoring</p>
+      <h2 className="mt-1 text-3xl font-bold tracking-normal">{title}</h2>
+    </header>
   );
 }
 
@@ -475,26 +527,29 @@ function TeamScorePanel({
   onAddFoul,
   onAddPoint,
   playerStats,
+  players,
   score,
+  sideLabel,
   team,
 }: {
   canEdit: boolean;
   fouls: number;
-  onAddFoul: (playerId: string) => void;
-  onAddPoint: (playerId: string, points: 1 | 2) => void;
+  onAddFoul: (player: Player) => void;
+  onAddPoint: (player: Player, points: 1 | 2) => void;
   playerStats: Record<string, { fouls: number; points: number }>;
+  players: Player[];
   score: number;
+  sideLabel: "Team A" | "Team B";
   team: Team;
 }) {
   const foulWarning = fouls >= foulLimit;
+  const sideKey = sideLabel === "Team A" ? "team-a" : "team-b";
 
   return (
     <article className="rounded-lg border border-white/10 bg-[#0F172A] p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-black text-[#F97316]">
-            {team.id === "team-a" ? "Team A" : "Team B"}
-          </p>
+          <p className="text-xs font-black text-[#F97316]">{sideLabel}</p>
           <h3 className="mt-1 text-xl font-bold tracking-normal">
             {team.name}
           </h3>
@@ -505,7 +560,7 @@ function TeamScorePanel({
             <p className="text-xs text-[#94A3B8]">Score</p>
             <p
               className="text-2xl font-black text-white"
-              data-testid={`score-${team.id}`}
+              data-testid={`score-${sideKey}`}
             >
               {score}
             </p>
@@ -516,7 +571,7 @@ function TeamScorePanel({
               className={`text-2xl font-black ${
                 foulWarning ? "text-[#EF4444]" : "text-[#FACC15]"
               }`}
-              data-testid={`fouls-${team.id}`}
+              data-testid={`fouls-${sideKey}`}
             >
               {fouls}
             </p>
@@ -524,59 +579,74 @@ function TeamScorePanel({
         </div>
       </div>
 
-      <div className="mt-5 space-y-3">
-        {team.players.map((player) => {
-          const stats = playerStats[player.id] ?? { fouls: 0, points: 0 };
+      {players.length === 0 ? (
+        <div className="mt-5 rounded-lg border border-dashed border-white/15 bg-[#111827] p-4 text-center">
+          <p className="text-sm font-bold text-white">Nema igraca</p>
+          <p className="mt-1 text-xs text-[#94A3B8]">
+            Dodaj roster da bi imao dugmad za poene.
+          </p>
+          <Link
+            className="mt-3 inline-flex h-9 items-center justify-center rounded-md border border-white/15 px-3 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
+            href="/players"
+          >
+            Igraci
+          </Link>
+        </div>
+      ) : (
+        <div className="mt-5 space-y-3">
+          {players.map((player) => {
+            const stats = playerStats[player.id] ?? { fouls: 0, points: 0 };
 
-          return (
-            <div
-              className="rounded-lg border border-white/10 bg-[#111827] p-3"
-              key={player.id}
-            >
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-white">
-                    #{player.number} {player.name}
-                  </p>
-                  <p className="mt-1 text-xs text-[#94A3B8]">
-                    {stats.points} pts / {stats.fouls} fouls
-                  </p>
-                </div>
+            return (
+              <div
+                className="rounded-lg border border-white/10 bg-[#111827] p-3"
+                key={player.id}
+              >
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-white">
+                      #{player.jerseyNumber} {getPlayerDisplayName(player)}
+                    </p>
+                    <p className="mt-1 text-xs text-[#94A3B8]">
+                      {stats.points} pts / {stats.fouls} fouls
+                    </p>
+                  </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    className="h-12 rounded-md bg-[#F97316] px-3 text-base font-black text-[#111827] transition hover:bg-[#FACC15] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-[#64748B]"
-                    data-testid={`point-${player.id}-1`}
-                    disabled={!canEdit}
-                    onClick={() => onAddPoint(player.id, 1)}
-                    type="button"
-                  >
-                    +1
-                  </button>
-                  <button
-                    className="h-12 rounded-md bg-[#F97316] px-3 text-base font-black text-[#111827] transition hover:bg-[#FACC15] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-[#64748B]"
-                    data-testid={`point-${player.id}-2`}
-                    disabled={!canEdit}
-                    onClick={() => onAddPoint(player.id, 2)}
-                    type="button"
-                  >
-                    +2
-                  </button>
-                  <button
-                    className="h-12 rounded-md border border-[#FACC15]/60 px-3 text-sm font-black text-[#FACC15] transition hover:bg-[#FACC15] hover:text-[#111827] disabled:cursor-not-allowed disabled:border-white/10 disabled:text-[#64748B]"
-                    data-testid={`foul-${player.id}`}
-                    disabled={!canEdit}
-                    onClick={() => onAddFoul(player.id)}
-                    type="button"
-                  >
-                    Foul
-                  </button>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      className="h-12 rounded-md bg-[#F97316] px-3 text-base font-black text-[#111827] transition hover:bg-[#FACC15] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-[#64748B]"
+                      data-testid={`point-${player.id}-1`}
+                      disabled={!canEdit}
+                      onClick={() => onAddPoint(player, 1)}
+                      type="button"
+                    >
+                      +1
+                    </button>
+                    <button
+                      className="h-12 rounded-md bg-[#F97316] px-3 text-base font-black text-[#111827] transition hover:bg-[#FACC15] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-[#64748B]"
+                      data-testid={`point-${player.id}-2`}
+                      disabled={!canEdit}
+                      onClick={() => onAddPoint(player, 2)}
+                      type="button"
+                    >
+                      +2
+                    </button>
+                    <button
+                      className="h-12 rounded-md border border-[#FACC15]/60 px-3 text-sm font-black text-[#FACC15] transition hover:bg-[#FACC15] hover:text-[#111827] disabled:cursor-not-allowed disabled:border-white/10 disabled:text-[#64748B]"
+                      data-testid={`foul-${player.id}`}
+                      disabled={!canEdit}
+                      onClick={() => onAddFoul(player)}
+                      type="button"
+                    >
+                      Foul
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </article>
   );
 }
@@ -588,9 +658,9 @@ function Scoreboard({
   score,
 }: {
   clock: string;
-  fouls: Record<TeamId, number>;
+  fouls: ScoreBySide;
   matchStatus: MatchStatus;
-  score: Record<TeamId, number>;
+  score: ScoreBySide;
 }) {
   return (
     <aside className="flex flex-col justify-center rounded-lg border border-[#F97316]/30 bg-[#0F172A] p-5 text-center">
@@ -611,14 +681,14 @@ function Scoreboard({
         Score
       </p>
       <p className="mt-2 text-6xl font-black tracking-normal text-white">
-        <span data-testid="main-score-a">{score["team-a"]}</span>
+        <span data-testid="main-score-a">{score.teamA}</span>
         <span className="mx-3 text-[#F97316]">:</span>
-        <span data-testid="main-score-b">{score["team-b"]}</span>
+        <span data-testid="main-score-b">{score.teamB}</span>
       </p>
 
       <div className="mt-6 grid grid-cols-2 gap-3">
-        <Metric label="Fouls A" value={fouls["team-a"].toString()} />
-        <Metric label="Fouls B" value={fouls["team-b"].toString()} />
+        <Metric label="Fouls A" value={fouls.teamA.toString()} />
+        <Metric label="Fouls B" value={fouls.teamB.toString()} />
       </div>
     </aside>
   );
@@ -628,10 +698,14 @@ function EventLog({
   events,
   isFinished,
   onDeleteEvent,
+  playerMap,
+  teamMap,
 }: {
   events: MatchEvent[];
   isFinished: boolean;
   onDeleteEvent: (eventId: string) => void;
+  playerMap: Map<string, Player>;
+  teamMap: Map<string, Team>;
 }) {
   const orderedEvents = [...events].reverse();
 
@@ -649,47 +723,56 @@ function EventLog({
         </span>
       </div>
 
-      <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1" data-testid="event-log">
-        {orderedEvents.map((event) => {
-          const canDelete =
-            !isFinished &&
-            !event.isDeleted &&
-            (event.type === "POINT" || event.type === "FOUL");
+      {orderedEvents.length === 0 ? (
+        <p className="mt-4 rounded-md border border-dashed border-white/15 bg-[#0F172A] px-3 py-4 text-sm text-[#94A3B8]">
+          Zapisnik je prazan dok ne startujes utakmicu ili uneses prvi dogadjaj.
+        </p>
+      ) : (
+        <div
+          className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1"
+          data-testid="event-log"
+        >
+          {orderedEvents.map((event) => {
+            const canDelete =
+              !isFinished &&
+              !event.isDeleted &&
+              (event.type === "POINT" || event.type === "FOUL");
 
-          return (
-            <article
-              className={`rounded-md border border-white/10 bg-[#0F172A] p-3 ${
-                event.isDeleted ? "opacity-50" : ""
-              }`}
-              key={event.id}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p
-                    className={`text-sm font-semibold text-white ${
-                      event.isDeleted ? "line-through" : ""
-                    }`}
-                  >
-                    {getEventText(event)}
-                  </p>
-                  <p className="mt-1 text-xs text-[#94A3B8]">
-                    Clock {event.clock} / {event.createdAt}
-                  </p>
+            return (
+              <article
+                className={`rounded-md border border-white/10 bg-[#0F172A] p-3 ${
+                  event.isDeleted ? "opacity-50" : ""
+                }`}
+                key={event.id}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p
+                      className={`text-sm font-semibold text-white ${
+                        event.isDeleted ? "line-through" : ""
+                      }`}
+                    >
+                      {getEventText(event, teamMap, playerMap)}
+                    </p>
+                    <p className="mt-1 text-xs text-[#94A3B8]">
+                      Clock {event.clock} / {formatEventTime(event.createdAt)}
+                    </p>
+                  </div>
+                  {canDelete && (
+                    <button
+                      className="rounded-md border border-white/15 px-2 py-1 text-xs font-bold text-[#CBD5E1] transition hover:border-[#EF4444] hover:text-[#FCA5A5]"
+                      onClick={() => onDeleteEvent(event.id)}
+                      type="button"
+                    >
+                      Obrisi
+                    </button>
+                  )}
                 </div>
-                {canDelete && (
-                  <button
-                    className="rounded-md border border-white/15 px-2 py-1 text-xs font-bold text-[#CBD5E1] transition hover:border-[#EF4444] hover:text-[#FCA5A5]"
-                    onClick={() => onDeleteEvent(event.id)}
-                    type="button"
-                  >
-                    Obrisi
-                  </button>
-                )}
-              </div>
-            </article>
-          );
-        })}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
@@ -706,34 +789,77 @@ function Metric({
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2">
       <p className="text-xs text-[#94A3B8]">{label}</p>
-      <p className={`mt-1 text-xl font-black ${valueClassName}`}>{value}</p>
+      <p className={`mt-1 truncate text-xl font-black ${valueClassName}`}>
+        {value}
+      </p>
     </div>
   );
 }
 
-function calculateScore(events: MatchEvent[]): Record<TeamId, number> {
-  return events.reduce(
+function EmptyState({
+  actionHref,
+  actionText,
+  text,
+  title,
+}: {
+  actionHref: string;
+  actionText: string;
+  text: string;
+  title: string;
+}) {
+  return (
+    <div className="mt-6 rounded-lg border border-dashed border-white/15 bg-[#111827] p-6 text-center">
+      <p className="text-lg font-bold text-white">{title}</p>
+      <p className="mx-auto mt-2 max-w-md text-sm text-[#94A3B8]">{text}</p>
+      <Link
+        className="mt-4 inline-flex h-10 items-center justify-center rounded-md bg-[#F97316] px-3 text-sm font-black text-[#111827] transition hover:bg-[#FACC15]"
+        href={actionHref}
+      >
+        {actionText}
+      </Link>
+    </div>
+  );
+}
+
+function calculateScore(events: MatchEvent[], match: Match): ScoreBySide {
+  return events.reduce<ScoreBySide>(
     (score, event) => {
-      if (event.type === "POINT" && event.teamId && !event.isDeleted) {
-        score[event.teamId] += event.points ?? 0;
+      if (event.type !== "POINT" || !event.teamId || event.isDeleted) {
+        return score;
+      }
+
+      if (event.teamId === match.teamAId) {
+        score.teamA += event.points ?? 0;
+      }
+
+      if (event.teamId === match.teamBId) {
+        score.teamB += event.points ?? 0;
       }
 
       return score;
     },
-    { "team-a": 0, "team-b": 0 },
+    { teamA: 0, teamB: 0 },
   );
 }
 
-function calculateFouls(events: MatchEvent[]): Record<TeamId, number> {
-  return events.reduce(
+function calculateFouls(events: MatchEvent[], match: Match): ScoreBySide {
+  return events.reduce<ScoreBySide>(
     (fouls, event) => {
-      if (event.type === "FOUL" && event.teamId && !event.isDeleted) {
-        fouls[event.teamId] += 1;
+      if (event.type !== "FOUL" || !event.teamId || event.isDeleted) {
+        return fouls;
+      }
+
+      if (event.teamId === match.teamAId) {
+        fouls.teamA += 1;
+      }
+
+      if (event.teamId === match.teamBId) {
+        fouls.teamB += 1;
       }
 
       return fouls;
     },
-    { "team-a": 0, "team-b": 0 },
+    { teamA: 0, teamB: 0 },
   );
 }
 
@@ -762,16 +888,20 @@ function calculatePlayerStats(
   );
 }
 
-function createEvent(event: Omit<MatchEvent, "createdAt" | "id" | "isDeleted">): MatchEvent {
+function createEvent(
+  match: Match,
+  event: Omit<
+    MatchEvent,
+    "createdAt" | "id" | "isDeleted" | "matchId" | "tournamentId"
+  >,
+): MatchEvent {
   return {
     ...event,
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    createdAt: new Date().toLocaleTimeString("sr-RS", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }),
+    createdAt: new Date().toISOString(),
+    id: crypto.randomUUID(),
     isDeleted: false,
+    matchId: match.id,
+    tournamentId: match.tournamentId,
   };
 }
 
@@ -782,15 +912,19 @@ function formatClock(seconds: number) {
   return `${minutes}:${secondsLeft}`;
 }
 
-function getEventText(event: MatchEvent) {
+function getEventText(
+  event: MatchEvent,
+  teamMap: Map<string, Team>,
+  playerMap: Map<string, Player>,
+) {
   if (event.description) {
     return event.description;
   }
 
   const playerName = event.playerId
-    ? playerMap.get(event.playerId)?.name ?? "Nepoznat igrac"
+    ? getPlayerName(event.playerId, playerMap)
     : "Bez igraca";
-  const teamName = event.teamId ? getTeamName(event.teamId) : "";
+  const teamName = event.teamId ? getTeamName(event.teamId, teamMap) : "";
 
   if (event.type === "POINT") {
     return `${playerName}, ${teamName}, +${event.points}`;
@@ -807,25 +941,63 @@ function getEventText(event: MatchEvent) {
   return event.type;
 }
 
-function getTeamName(teamId: TeamId) {
-  return teamMap.get(teamId)?.name ?? "Nepoznat tim";
+function getPlayerName(playerId: string, playerMap: Map<string, Player>) {
+  const player = playerMap.get(playerId);
+
+  if (!player) {
+    return "Nepoznat igrac";
+  }
+
+  return `#${player.jerseyNumber} ${getPlayerDisplayName(player)}`;
 }
 
-function getWinnerText(score: Record<TeamId, number>) {
-  if (score["team-a"] === score["team-b"]) {
+function getTeamName(teamId: string, teamMap: Map<string, Team>) {
+  return teamMap.get(teamId)?.name ?? "Nepoznata ekipa";
+}
+
+function getWinnerTeamId(score: ScoreBySide, match: Match) {
+  if (score.teamA === score.teamB) {
+    return undefined;
+  }
+
+  return score.teamA > score.teamB ? match.teamAId : match.teamBId;
+}
+
+function getWinnerText(
+  score: ScoreBySide,
+  match: Match,
+  teamMap: Map<string, Team>,
+) {
+  const winnerTeamId = getWinnerTeamId(score, match);
+
+  if (!winnerTeamId) {
     return "Rezultat je izjednacen.";
   }
 
-  const winnerId = score["team-a"] > score["team-b"] ? "team-a" : "team-b";
-  return `Pobednik: ${getTeamName(winnerId)}.`;
+  return `Pobednik: ${getTeamName(winnerTeamId, teamMap)}.`;
+}
+
+function formatEventTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("sr-RS", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
 }
 
 function statusBadge(status: MatchStatus) {
   const classes: Record<MatchStatus, string> = {
-    SCHEDULED: "bg-[#38BDF8]/15 text-[#7DD3FC]",
+    CANCELLED: "bg-white/10 text-[#CBD5E1]",
+    FINISHED: "bg-[#EF4444]/15 text-[#FCA5A5]",
     LIVE: "bg-[#22C55E]/15 text-[#86EFAC]",
     PAUSED: "bg-[#FACC15]/15 text-[#FDE68A]",
-    FINISHED: "bg-[#EF4444]/15 text-[#FCA5A5]",
+    SCHEDULED: "bg-[#38BDF8]/15 text-[#7DD3FC]",
   };
 
   return classes[status];
@@ -833,10 +1005,11 @@ function statusBadge(status: MatchStatus) {
 
 function statusColor(status: MatchStatus) {
   const classes: Record<MatchStatus, string> = {
-    SCHEDULED: "text-[#7DD3FC]",
+    CANCELLED: "text-[#CBD5E1]",
+    FINISHED: "text-[#FCA5A5]",
     LIVE: "text-[#86EFAC]",
     PAUSED: "text-[#FDE68A]",
-    FINISHED: "text-[#FCA5A5]",
+    SCHEDULED: "text-[#7DD3FC]",
   };
 
   return classes[status];

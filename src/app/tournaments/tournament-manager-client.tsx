@@ -1,6 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { saveMatchEvents, useMatchEvents } from "../live-score/match-event-store";
+import { saveMatches, useMatches } from "../matches/match-store";
+import { savePlayers, usePlayers } from "../players/player-store";
+import { saveTeams, useTeams } from "../teams/team-store";
 import {
   saveTournaments,
   useTournaments,
@@ -58,6 +62,10 @@ const typeLabels: Record<TournamentType, string> = {
 };
 
 export function TournamentManagerClient() {
+  const matchEvents = useMatchEvents();
+  const matches = useMatches();
+  const players = usePlayers();
+  const teams = useTeams();
   const tournaments = useTournaments();
   const [form, setForm] = useState<TournamentFormState>(defaultFormState);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -165,11 +173,29 @@ export function TournamentManagerClient() {
   }
 
   function deleteTournament(tournamentId: string) {
+    const deletedTeamIds = new Set(
+      teams
+        .filter((team) => team.tournamentId === tournamentId)
+        .map((team) => team.id),
+    );
+    const deletedMatchIds = new Set(
+      matches
+        .filter((match) => match.tournamentId === tournamentId)
+        .map((match) => match.id),
+    );
     const nextTournaments = tournaments.filter(
       (tournament) => tournament.id !== tournamentId,
     );
 
     saveTournaments(nextTournaments);
+    saveTeams(teams.filter((team) => team.tournamentId !== tournamentId));
+    savePlayers(
+      players.filter((player) => !deletedTeamIds.has(player.teamId)),
+    );
+    saveMatches(matches.filter((match) => match.tournamentId !== tournamentId));
+    saveMatchEvents(
+      matchEvents.filter((event) => !deletedMatchIds.has(event.matchId)),
+    );
 
     if (selectedTournamentId === tournamentId) {
       setSelectedTournamentId(nextTournaments[0]?.id);
@@ -386,6 +412,10 @@ export function TournamentManagerClient() {
                   onSelect={setSelectedTournamentId}
                   onStatusChange={updateTournamentStatus}
                   onToggleRegistration={toggleRegistration}
+                  teamCount={
+                    teams.filter((team) => team.tournamentId === tournament.id)
+                      .length
+                  }
                   tournament={tournament}
                 />
               ))}
@@ -421,6 +451,7 @@ function TournamentCard({
   onSelect,
   onStatusChange,
   onToggleRegistration,
+  teamCount,
   tournament,
 }: {
   isSelected: boolean;
@@ -428,6 +459,7 @@ function TournamentCard({
   onSelect: (tournamentId: string) => void;
   onStatusChange: (tournamentId: string, status: TournamentStatus) => void;
   onToggleRegistration: (tournamentId: string) => void;
+  teamCount: number;
   tournament: Tournament;
 }) {
   return (
@@ -492,7 +524,7 @@ function TournamentCard({
         <Metric label="Datum" value={formatDateRange(tournament)} />
         <Metric label="Format" value={typeLabels[tournament.tournamentType]} />
         <Metric label="Tereni" value={tournament.numberOfCourts.toString()} />
-        <Metric label="Ekipe" value={`0/${tournament.maxTeams}`} />
+        <Metric label="Ekipe" value={`${teamCount}/${tournament.maxTeams}`} />
       </div>
 
       {tournament.description && (

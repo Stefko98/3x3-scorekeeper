@@ -7,10 +7,26 @@ export const metadata: Metadata = {
   description: "Interaktivni live scoring ekran za 3x3 utakmicu.",
 };
 
-export default function LiveScorePage() {
+type LiveScorePageProps = {
+  searchParams: Promise<{
+    matchId?: string | string[];
+  }>;
+};
+
+export default async function LiveScorePage({
+  searchParams,
+}: LiveScorePageProps) {
+  const params = await searchParams;
+  const initialMatchId = Array.isArray(params.matchId)
+    ? params.matchId[0]
+    : params.matchId;
+
   return (
     <AppShell activeModule="Live Score">
-      <LiveScoreClient />
+      <LiveScoreClient
+        initialMatchId={initialMatchId}
+        key={initialMatchId ?? "live-score"}
+      />
     </AppShell>
   );
 }

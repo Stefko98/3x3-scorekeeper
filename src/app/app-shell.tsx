@@ -14,6 +14,9 @@ const modules = [
 
 const moduleLinks: Record<string, string> = {
   Dashboard: "/",
+  Ekipe: "/teams",
+  Igraci: "/players",
+  Utakmice: "/matches",
   Turniri: "/tournaments",
   "Live Score": "/live-score",
 };
