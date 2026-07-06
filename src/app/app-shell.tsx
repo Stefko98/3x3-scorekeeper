@@ -8,6 +8,7 @@ const modules = [
   "Utakmice",
   "Live Score",
   "Tabele",
+  "Statistika",
   "Public Viewer",
   "Audit Log",
 ];
@@ -19,6 +20,7 @@ const moduleLinks: Record<string, string> = {
   Utakmice: "/matches",
   Turniri: "/tournaments",
   "Live Score": "/live-score",
+  Statistika: "/player-stats",
   Tabele: "/standings",
 };
 

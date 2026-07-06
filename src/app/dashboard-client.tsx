@@ -97,6 +97,12 @@ export function DashboardClient() {
           >
             Tabele
           </Link>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
+            href="/player-stats"
+          >
+            Statistika
+          </Link>
         </div>
       </header>
 
