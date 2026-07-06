@@ -37,6 +37,7 @@ export type Tournament = {
 
 const storageKey = "3x3-tournament-manager:tournaments";
 const storeEventName = "3x3-tournaments-updated";
+const emptyTournamentSnapshot: Tournament[] = [];
 
 let cachedRaw = "";
 let cachedTournaments: Tournament[] = [];
@@ -82,7 +83,7 @@ function getTournamentSnapshot() {
 }
 
 function getServerTournamentSnapshot() {
-  return [];
+  return emptyTournamentSnapshot;
 }
 
 function parseTournaments(raw: string): Tournament[] {
