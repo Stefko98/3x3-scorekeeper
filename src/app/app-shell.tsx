@@ -1,5 +1,16 @@
 import Link from "next/link";
-import { modules } from "./dashboard-data";
+
+const modules = [
+  "Dashboard",
+  "Turniri",
+  "Ekipe",
+  "Igraci",
+  "Utakmice",
+  "Live Score",
+  "Tabele",
+  "Public Viewer",
+  "Audit Log",
+];
 
 const moduleLinks: Record<string, string> = {
   Dashboard: "/",
