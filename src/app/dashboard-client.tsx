@@ -56,6 +56,7 @@ export function DashboardClient() {
   const activeMatches = matches.filter(
     (match) => match.status === "LIVE" || match.status === "PAUSED",
   );
+  const finishedMatches = matches.filter((match) => match.status === "FINISHED");
   const nextMatches = [...matches]
     .filter((match) => match.status !== "CANCELLED")
     .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
@@ -90,6 +91,12 @@ export function DashboardClient() {
           >
             Otvori live score
           </Link>
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
+            href="/standings"
+          >
+            Tabele
+          </Link>
         </div>
       </header>
 
@@ -117,7 +124,7 @@ export function DashboardClient() {
           value={players.length.toString()}
         />
         <MetricCard
-          detail={`${activeMatches.length} live/pauziranih`}
+          detail={`${finishedMatches.length} zavrsenih / ${activeMatches.length} live`}
           label="Utakmice"
           tone="blue"
           value={matches.length.toString()}
@@ -199,9 +206,13 @@ export function DashboardClient() {
               text="Kreiran raspored utakmica"
             />
             <ChecklistItem
+              done={finishedMatches.length > 0}
+              text="Tabela ima zavrsen rezultat"
+            />
+            <ChecklistItem
               done={
                 activeMatches.length > 0 ||
-                matches.some((match) => match.status === "FINISHED")
+                finishedMatches.length > 0
               }
               text="Live score povezan sa utakmicom"
             />
@@ -222,7 +233,7 @@ export function DashboardClient() {
           }
           title="Turnirski setup"
         >
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <SmallMetric label="Draft" value={countStatus(tournaments, "DRAFT")} />
             <SmallMetric
               label="Ekipe"
@@ -232,6 +243,7 @@ export function DashboardClient() {
               label="Roster ready"
               value={teamsWithEnoughPlayers.length}
             />
+            <SmallMetric label="Odigrano" value={finishedMatches.length} />
           </div>
         </ReadinessPanel>
 

@@ -19,6 +19,7 @@ const moduleLinks: Record<string, string> = {
   Utakmice: "/matches",
   Turniri: "/tournaments",
   "Live Score": "/live-score",
+  Tabele: "/standings",
 };
 
 type AppShellProps = {
