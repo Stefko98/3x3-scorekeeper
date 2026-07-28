@@ -1,5 +1,24 @@
 # CourtFlow 3x3 Organizator
 
+## Pokretanje na Windowsu
+
+Na glavnom laptopu dvaput klikni:
+
+```text
+Pokreni CourtFlow Windows.bat
+```
+
+Skripta po potrebi instalira Node.js i pakete, pravi produkcioni build,
+pokrece server i prikazuje IP adresu za drugi laptop.
+
+Na sporednom laptopu pokreni:
+
+```text
+Otvori CourtFlow na sporednom laptopu.bat
+```
+
+Zatim upisi IP adresu koju prikazuje glavni laptop.
+
 ## Pokretanje na Linuxu
 
 Na glavnom Linux racunaru, iz foldera `3x3 Basket`, pokreni:
