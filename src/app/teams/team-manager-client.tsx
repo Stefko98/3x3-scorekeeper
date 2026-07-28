@@ -1,19 +1,21 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { confirmDelete } from "../lib/confirm-delete";
+import { createId } from "../lib/id";
 import { saveMatchEvents, useMatchEvents } from "../live-score/match-event-store";
 import { saveMatches, useMatches } from "../matches/match-store";
 import { savePlayers, usePlayers } from "../players/player-store";
+import { getTournamentFormat } from "../tournaments/tournament-format";
 import { useTournaments, type Tournament } from "../tournaments/tournament-store";
 import { saveTeams, useTeams, type Team, type TeamStatus } from "./team-store";
 
 type TeamFormState = {
+  captainPhone: string;
   city: string;
-  contactEmail: string;
-  contactPerson: string;
-  contactPhone: string;
   groupName: string;
+  logoUrl: string;
   name: string;
   status: TeamStatus;
 };
@@ -21,20 +23,19 @@ type TeamFormState = {
 type FormErrors = Partial<Record<keyof TeamFormState | "tournament", string>>;
 
 const defaultFormState: TeamFormState = {
+  captainPhone: "",
   city: "",
-  contactEmail: "",
-  contactPerson: "",
-  contactPhone: "",
   groupName: "",
+  logoUrl: "",
   name: "",
-  status: "REGISTERED",
+  status: "CONFIRMED",
 };
 
-const statusLabels: Record<TeamStatus, string> = {
-  CONFIRMED: "Confirmed",
-  DISQUALIFIED: "Disqualified",
-  REGISTERED: "Registered",
-  WITHDRAWN: "Withdrawn",
+const teamStatusLabels: Record<TeamStatus, string> = {
+  CONFIRMED: "Potvrdjena",
+  DISQUALIFIED: "Diskvalifikovana",
+  REGISTERED: "Prijavljena",
+  WITHDRAWN: "Odustala",
 };
 
 export function TeamManagerClient() {
@@ -43,6 +44,7 @@ export function TeamManagerClient() {
   const players = usePlayers();
   const teams = useTeams();
   const tournaments = useTournaments();
+  const [editingTeamId, setEditingTeamId] = useState<string>();
   const [errors, setErrors] = useState<FormErrors>({});
   const [form, setForm] = useState<TeamFormState>(defaultFormState);
   const [selectedTournamentId, setSelectedTournamentId] = useState<string>();
@@ -50,6 +52,22 @@ export function TeamManagerClient() {
   const selectedTournament =
     tournaments.find((tournament) => tournament.id === selectedTournamentId) ??
     tournaments[0];
+  const groupOptions = useMemo(
+    () =>
+      selectedTournament
+        ? getGroupOptions(getTournamentFormat(selectedTournament).groupCount)
+        : {},
+    [selectedTournament],
+  );
+  const allowedGroupNames = useMemo(() => Object.keys(groupOptions), [groupOptions]);
+  const groupSelectOptions = useMemo(
+    () => ({ "": "Bez grupe", ...groupOptions }),
+    [groupOptions],
+  );
+  const selectedGroupName =
+    allowedGroupNames.length > 0
+      ? normalizeGroupNameForOptions(form.groupName, allowedGroupNames)
+      : form.groupName;
   const tournamentTeams = useMemo(
     () =>
       selectedTournament
@@ -58,20 +76,17 @@ export function TeamManagerClient() {
     [selectedTournament, teams],
   );
 
-  const metrics = useMemo(() => {
-    const confirmed = tournamentTeams.filter(
-      (team) => team.status === "CONFIRMED",
-    ).length;
-    const registered = tournamentTeams.filter(
-      (team) => team.status === "REGISTERED",
-    ).length;
-
-    return {
-      confirmed,
-      registered,
+  const metrics = useMemo(
+    () => ({
+      players: tournamentTeams.reduce(
+        (total, team) =>
+          total + players.filter((player) => player.teamId === team.id).length,
+        0,
+      ),
       total: tournamentTeams.length,
-    };
-  }, [tournamentTeams]);
+    }),
+    [players, tournamentTeams],
+  );
 
   function updateField<K extends keyof TeamFormState>(
     field: K,
@@ -81,10 +96,27 @@ export function TeamManagerClient() {
     setErrors((currentErrors) => ({ ...currentErrors, [field]: undefined }));
   }
 
-  function createTeam(event: React.FormEvent<HTMLFormElement>) {
+  function changeTournament(tournamentId: string) {
+    setSelectedTournamentId(tournamentId);
+    setEditingTeamId(undefined);
+    setForm(defaultFormState);
+    setErrors({});
+  }
+
+  function saveTeam(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const nextErrors = validateForm(form, selectedTournament, tournamentTeams);
+    const normalizedForm = {
+      ...form,
+      groupName: selectedGroupName,
+    };
+    const nextErrors = validateForm(
+      normalizedForm,
+      selectedTournament,
+      tournamentTeams,
+      allowedGroupNames,
+      editingTeamId,
+    );
     setErrors(nextErrors);
 
     if (!selectedTournament || Object.keys(nextErrors).length > 0) {
@@ -92,40 +124,70 @@ export function TeamManagerClient() {
     }
 
     const now = new Date().toISOString();
+
+    if (editingTeamId) {
+      saveTeams(
+        teams.map((team) =>
+          team.id === editingTeamId
+            ? {
+                ...team,
+                captainPhone: normalizedForm.captainPhone.trim(),
+                city: normalizedForm.city.trim(),
+                groupName: normalizedForm.groupName.trim().toUpperCase(),
+                logoUrl: normalizedForm.logoUrl.trim(),
+                name: normalizedForm.name.trim(),
+                status: normalizedForm.status,
+                updatedAt: now,
+              }
+            : team,
+        ),
+      );
+      resetForm();
+      return;
+    }
+
     const team: Team = {
-      city: form.city.trim(),
-      contactEmail: form.contactEmail.trim(),
-      contactPerson: form.contactPerson.trim(),
-      contactPhone: form.contactPhone.trim(),
+      captainPhone: normalizedForm.captainPhone.trim(),
+      city: normalizedForm.city.trim(),
       createdAt: now,
-      groupName: form.groupName.trim(),
-      id: crypto.randomUUID(),
-      name: form.name.trim(),
-      status: form.status,
+      groupName: normalizedForm.groupName.trim().toUpperCase(),
+      id: createId("team"),
+      logoUrl: normalizedForm.logoUrl.trim(),
+      name: normalizedForm.name.trim(),
+      status: normalizedForm.status,
       tournamentId: selectedTournament.id,
       updatedAt: now,
     };
 
     saveTeams([team, ...teams]);
+    resetForm();
+  }
+
+  function startEditTeam(team: Team) {
+    setEditingTeamId(team.id);
+    setSelectedTournamentId(team.tournamentId);
+    setForm({
+      captainPhone: team.captainPhone,
+      city: team.city,
+      groupName: team.groupName,
+      logoUrl: team.logoUrl,
+      name: team.name,
+      status: team.status,
+    });
+    setErrors({});
+  }
+
+  function resetForm() {
+    setEditingTeamId(undefined);
     setForm(defaultFormState);
     setErrors({});
   }
 
-  function updateTeamStatus(teamId: string, status: TeamStatus) {
-    saveTeams(
-      teams.map((team) =>
-        team.id === teamId
-          ? {
-              ...team,
-              status,
-              updatedAt: new Date().toISOString(),
-            }
-          : team,
-      ),
-    );
-  }
-
   function deleteTeam(teamId: string) {
+    if (!confirmDelete()) {
+      return;
+    }
+
     const deletedMatchIds = new Set(
       matches
         .filter((match) => match.teamAId === teamId || match.teamBId === teamId)
@@ -142,6 +204,10 @@ export function TeamManagerClient() {
     saveMatchEvents(
       matchEvents.filter((event) => !deletedMatchIds.has(event.matchId)),
     );
+
+    if (editingTeamId === teamId) {
+      resetForm();
+    }
   }
 
   return (
@@ -149,14 +215,13 @@ export function TeamManagerClient() {
       <header className="flex flex-col gap-4 border-b border-white/10 pb-5 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-sm font-medium text-[#94A3B8]">
-            Team registration
+            Ručno dodavanje ekipa
           </p>
           <h2 className="mt-1 text-3xl font-bold tracking-normal">Ekipe</h2>
         </div>
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Metric label="Ekipe" value={metrics.total.toString()} />
-          <Metric label="Confirmed" value={metrics.confirmed.toString()} />
-          <Metric label="Registered" value={metrics.registered.toString()} />
+          <Metric label="Igrači" value={metrics.players.toString()} />
           <Metric
             label="Kapacitet"
             value={
@@ -176,20 +241,24 @@ export function TeamManagerClient() {
           title="Prvo napravi turnir"
         />
       ) : (
-        <div className="mt-6 grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <div className="mt-6 grid gap-6 2xl:grid-cols-[400px_minmax(0,1fr)]">
           <section className="rounded-lg border border-white/10 bg-[#111827] p-4 shadow-[0_18px_40px_rgba(2,6,23,0.22)] sm:p-5">
             <div>
-              <h3 className="text-xl font-bold tracking-normal">Nova ekipa</h3>
+              <h3 className="text-xl font-bold tracking-normal">
+                {editingTeamId ? "Izmena ekipe" : "Nova ekipa"}
+              </h3>
               <p className="mt-1 text-sm text-[#94A3B8]">
-                Svaka ekipa je vezana za izabrani turnir.
+                {editingTeamId
+                  ? "Izmeni podatke i sačuvaj promene."
+                  : "Svaka ekipa je vezana za izabrani turnir."}
               </p>
             </div>
 
-            <form className="mt-5 space-y-4" onSubmit={createTeam}>
+            <form className="mt-5 space-y-4" onSubmit={saveTeam}>
               <SelectField
                 label="Turnir"
                 name="tournament"
-                onChange={setSelectedTournamentId}
+                onChange={changeTournament}
                 options={Object.fromEntries(
                   tournaments.map((tournament) => [
                     tournament.id,
@@ -204,7 +273,7 @@ export function TeamManagerClient() {
                 label="Naziv ekipe"
                 name="team-name"
                 onChange={(value) => updateField("name", value)}
-                placeholder="Belgrade Wolves"
+                placeholder="Beograd 3x3"
                 value={form.name}
               />
 
@@ -214,50 +283,41 @@ export function TeamManagerClient() {
                   label="Grad"
                   name="team-city"
                   onChange={(value) => updateField("city", value)}
-                  placeholder="Belgrade"
+                  placeholder="Beograd"
                   value={form.city}
                 />
-                <TextField
+                <SelectField
+                  error={errors.groupName}
                   label="Grupa"
                   name="team-group"
                   onChange={(value) => updateField("groupName", value)}
-                  placeholder="A"
-                  value={form.groupName}
+                  options={groupSelectOptions}
+                  value={selectedGroupName}
                 />
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField
-                  label="Kontakt osoba"
-                  name="team-contact-person"
-                  onChange={(value) => updateField("contactPerson", value)}
-                  placeholder="Stefan"
-                  value={form.contactPerson}
+                  label="Broj kapitena"
+                  name="team-captain-phone"
+                  onChange={(value) => updateField("captainPhone", value)}
+                  placeholder="+381..."
+                  value={form.captainPhone}
                 />
                 <TextField
-                  label="Telefon"
-                  name="team-contact-phone"
-                  onChange={(value) => updateField("contactPhone", value)}
-                  placeholder="+381..."
-                  value={form.contactPhone}
+                  label="Logo URL"
+                  name="team-logo-url"
+                  onChange={(value) => updateField("logoUrl", value)}
+                  placeholder="https://..."
+                  value={form.logoUrl}
                 />
               </div>
 
-              <TextField
-                error={errors.contactEmail}
-                label="Email"
-                name="team-contact-email"
-                onChange={(value) => updateField("contactEmail", value)}
-                placeholder="ekipa@email.com"
-                type="email"
-                value={form.contactEmail}
-              />
-
               <SelectField
-                label="Status"
+                label="Status ekipe"
                 name="team-status"
                 onChange={(value) => updateField("status", value as TeamStatus)}
-                options={statusLabels}
+                options={teamStatusLabels}
                 value={form.status}
               />
 
@@ -272,8 +332,17 @@ export function TeamManagerClient() {
                 data-testid="create-team"
                 type="submit"
               >
-                Sacuvaj ekipu
+                {editingTeamId ? "Sačuvaj izmene" : "Sačuvaj ekipu"}
               </button>
+              {editingTeamId && (
+                <button
+                  className="h-11 w-full rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
+                  onClick={resetForm}
+                  type="button"
+                >
+                  Odustani
+                </button>
+              )}
             </form>
           </section>
 
@@ -291,13 +360,13 @@ export function TeamManagerClient() {
                 className="inline-flex h-10 items-center justify-center rounded-md border border-white/15 px-3 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
                 href="/players"
               >
-                Dodaj igrace
+                Dodaj igrače
               </Link>
             </div>
 
             {tournamentTeams.length === 0 ? (
               <EmptyState
-                text="Kada dodas ekipu, pojavice se ovde i bice dostupna za igrace i utakmice."
+                text="Kada dodas ekipu, pojaviće se ovde i biće dostupna za igrače i utakmice."
                 title="Jos nema ekipa"
               />
             ) : (
@@ -306,7 +375,7 @@ export function TeamManagerClient() {
                   <TeamCard
                     key={team.id}
                     onDelete={deleteTeam}
-                    onStatusChange={updateTeamStatus}
+                    onEdit={startEditTeam}
                     playerCount={
                       players.filter((player) => player.teamId === team.id)
                         .length
@@ -325,12 +394,12 @@ export function TeamManagerClient() {
 
 function TeamCard({
   onDelete,
-  onStatusChange,
+  onEdit,
   playerCount,
   team,
 }: {
   onDelete: (teamId: string) => void;
-  onStatusChange: (teamId: string, status: TeamStatus) => void;
+  onEdit: (team: Team) => void;
   playerCount: number;
   team: Team;
 }) {
@@ -341,41 +410,38 @@ function TeamCard({
     >
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
         <div className="min-w-0">
-          <span className="rounded-md bg-white/5 px-2 py-1 text-xs font-black text-[#FACC15]">
-            {statusLabels[team.status]}
-          </span>
           <h4 className="mt-3 text-xl font-black tracking-normal text-white">
             {team.name}
           </h4>
           <p className="mt-1 text-sm text-[#94A3B8]">
             {team.city}
-            {team.groupName ? ` / Grupa ${team.groupName}` : ""}
+            {team.groupName ? ` / Grupa ${team.groupName}` : " / Bez grupe"}
           </p>
-          {(team.contactPerson || team.contactPhone || team.contactEmail) && (
+          {team.captainPhone && (
             <p className="mt-2 text-sm text-[#CBD5E1]">
-              {[team.contactPerson, team.contactPhone, team.contactEmail]
-                .filter(Boolean)
-                .join(" / ")}
+              Broj kapitena: {team.captainPhone}
             </p>
           )}
+          <span className="mt-3 inline-flex rounded-md bg-white/5 px-2 py-1 text-xs font-black text-[#FACC15]">
+            {teamStatusLabels[team.status]}
+          </span>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Metric label="Igraci" value={playerCount.toString()} />
-          <SelectField
-            compact
-            label="Status"
-            name={`status-${team.id}`}
-            onChange={(value) => onStatusChange(team.id, value as TeamStatus)}
-            options={statusLabels}
-            value={team.status}
-          />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Metric label="Igrači" value={playerCount.toString()} />
           <button
-            className="h-10 rounded-md border border-[#EF4444]/60 px-3 text-sm font-bold text-[#FCA5A5] transition hover:bg-[#EF4444] hover:text-white"
+            className="h-10 rounded-md border border-white/15 px-3 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
+            onClick={() => onEdit(team)}
+            type="button"
+          >
+            Izmeni
+          </button>
+          <button
+            className="h-10 rounded-md border border-[#EF4444]/60 px-3 text-sm font-bold text-[#FCA5A5] transition hover:bg-[#EF4444] hover:text-white sm:col-span-2"
             onClick={() => onDelete(team.id)}
             type="button"
           >
-            Obrisi
+            Obriši
           </button>
         </div>
       </div>
@@ -397,7 +463,7 @@ function TextField({
   name: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  type?: "email" | "text";
+  type?: "text";
   value: string;
 }) {
   return (
@@ -424,6 +490,7 @@ function TextField({
 
 function SelectField<T extends string>({
   compact = false,
+  error,
   label,
   name,
   onChange,
@@ -431,6 +498,7 @@ function SelectField<T extends string>({
   value,
 }: {
   compact?: boolean;
+  error?: string;
   label: string;
   name: string;
   onChange: (value: T) => void;
@@ -444,7 +512,9 @@ function SelectField<T extends string>({
       )}
       <select
         aria-label={compact ? label : undefined}
-        className={`w-full rounded-md border border-white/10 bg-[#0F172A] px-3 text-sm font-semibold text-white outline-none transition focus:border-[#F97316] ${
+        className={`w-full rounded-md border bg-[#0F172A] px-3 text-sm font-semibold text-white outline-none transition focus:border-[#F97316] ${
+          error ? "border-[#EF4444]" : "border-white/10"
+        } ${
           compact ? "h-10" : "mt-2 h-11"
         }`}
         name={name}
@@ -459,6 +529,7 @@ function SelectField<T extends string>({
           ),
         )}
       </select>
+      {error && <p className="mt-1 text-xs font-semibold text-[#FCA5A5]">{error}</p>}
     </label>
   );
 }
@@ -503,12 +574,14 @@ function validateForm(
   form: TeamFormState,
   selectedTournament: Tournament | undefined,
   tournamentTeams: Team[],
+  allowedGroupNames: string[],
+  editingTeamId?: string,
 ) {
   const errors: FormErrors = {};
 
   if (!selectedTournament) {
     errors.tournament = "Izaberi turnir.";
-  } else if (tournamentTeams.length >= selectedTournament.maxTeams) {
+  } else if (!editingTeamId && tournamentTeams.length >= selectedTournament.maxTeams) {
     errors.tournament = "Turnir je popunio maksimalan broj ekipa.";
   }
 
@@ -516,19 +589,64 @@ function validateForm(
     errors.name = "Naziv ekipe je obavezan.";
   } else if (
     tournamentTeams.some(
-      (team) => team.name.toLowerCase() === form.name.trim().toLowerCase(),
+      (team) =>
+        team.id !== editingTeamId &&
+        team.name.toLowerCase() === form.name.trim().toLowerCase(),
     )
   ) {
-    errors.name = "Ekipa sa tim nazivom vec postoji na turniru.";
+    errors.name = "Ekipa sa tim nazivom već postoji na turniru.";
   }
 
   if (!form.city.trim()) {
     errors.city = "Grad je obavezan.";
   }
 
-  if (form.contactEmail.trim() && !form.contactEmail.includes("@")) {
-    errors.contactEmail = "Email nije ispravan.";
+  const groupName = form.groupName.trim().toUpperCase();
+
+  if (
+    selectedTournament &&
+    groupName &&
+    allowedGroupNames.length > 0 &&
+    !allowedGroupNames.includes(groupName)
+  ) {
+    errors.groupName = `Grupa može biti samo ${formatGroupList(allowedGroupNames)}.`;
   }
 
   return errors;
+}
+
+function getGroupOptions(groupCount: number) {
+  const safeGroupCount = Math.max(1, Math.min(8, Math.trunc(groupCount)));
+
+  return Object.fromEntries(
+    Array.from({ length: safeGroupCount }, (_, index) => {
+      const groupName = String.fromCharCode(65 + index);
+
+      return [groupName, `Grupa ${groupName}`];
+    }),
+  );
+}
+
+function normalizeGroupNameForOptions(value: string, groupOptions: string[]) {
+  const normalizedGroupName = value.trim().toUpperCase();
+
+  if (!normalizedGroupName) {
+    return "";
+  }
+
+  if (groupOptions.includes(normalizedGroupName)) {
+    return normalizedGroupName;
+  }
+
+  return "";
+}
+
+function formatGroupList(groupNames: string[]) {
+  if (groupNames.length <= 2) {
+    return groupNames.join(" ili ");
+  }
+
+  return `${groupNames.slice(0, -1).join(", ")} ili ${
+    groupNames[groupNames.length - 1]
+  }`;
 }

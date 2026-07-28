@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { createLocalStorageStore } from "../lib/create-local-storage-store";
 
 export type TournamentStatus =
   | "DRAFT"
@@ -25,6 +25,8 @@ export type Tournament = {
   country: string;
   startDate: string;
   endDate: string;
+  groupCount?: number;
+  knockoutTeams?: number;
   numberOfCourts: number;
   maxTeams: number;
   status: TournamentStatus;
@@ -35,70 +37,14 @@ export type Tournament = {
   updatedAt: string;
 };
 
-const storageKey = "3x3-tournament-manager:tournaments";
-const storeEventName = "3x3-tournaments-updated";
-const emptyTournamentSnapshot: Tournament[] = [];
+const tournamentStore = createLocalStorageStore<Tournament>({
+  eventName: "3x3-tournaments-updated",
+  isItem: isTournament,
+  storageKey: "3x3-tournament-manager:tournaments",
+});
 
-let cachedRaw = "";
-let cachedTournaments: Tournament[] = [];
-
-export function useTournaments() {
-  return useSyncExternalStore(
-    subscribeToTournamentStore,
-    getTournamentSnapshot,
-    getServerTournamentSnapshot,
-  );
-}
-
-export function saveTournaments(tournaments: Tournament[]) {
-  const serialized = JSON.stringify(tournaments);
-  cachedRaw = serialized;
-  cachedTournaments = tournaments;
-
-  window.localStorage.setItem(storageKey, serialized);
-  window.dispatchEvent(new Event(storeEventName));
-}
-
-function subscribeToTournamentStore(callback: () => void) {
-  window.addEventListener(storeEventName, callback);
-  window.addEventListener("storage", callback);
-
-  return () => {
-    window.removeEventListener(storeEventName, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-function getTournamentSnapshot() {
-  const raw = window.localStorage.getItem(storageKey) ?? "[]";
-
-  if (raw === cachedRaw) {
-    return cachedTournaments;
-  }
-
-  cachedRaw = raw;
-  cachedTournaments = parseTournaments(raw);
-
-  return cachedTournaments;
-}
-
-function getServerTournamentSnapshot() {
-  return emptyTournamentSnapshot;
-}
-
-function parseTournaments(raw: string): Tournament[] {
-  try {
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter(isTournament);
-  } catch {
-    return [];
-  }
-}
+export const useTournaments = tournamentStore.useItems;
+export const saveTournaments = tournamentStore.saveItems;
 
 function isTournament(value: unknown): value is Tournament {
   if (typeof value !== "object" || value === null) {

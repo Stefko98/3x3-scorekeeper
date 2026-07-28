@@ -20,9 +20,18 @@
 # production
 /build
 
+# local shared tournament database
+/.shared-data
+
+# automatic readable and restore backups
+/backups
+
 # misc
 .DS_Store
 *.pem
+.courtflow-runtime/
+.courtflow-server.log
+.courtflow-server.pid
 
 # debug
 npm-debug.log*

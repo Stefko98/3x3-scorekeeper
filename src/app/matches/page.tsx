@@ -3,7 +3,7 @@ import { AppShell } from "../app-shell";
 import { MatchManagerClient } from "./match-manager-client";
 
 export const metadata: Metadata = {
-  title: "Utakmice | 3x3 Tournament Manager",
+  title: "Utakmice | 3x3 Organizator",
   description: "Raspored i statusi 3x3 utakmica.",
 };
 

@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { useMatches, type Match, type MatchStatus } from "./matches/match-store";
+import { useMatches } from "./matches/match-store";
 import { usePlayers } from "./players/player-store";
-import { useTeams, type Team } from "./teams/team-store";
+import { useTeams } from "./teams/team-store";
 import {
   useTournaments,
   type Tournament,
@@ -11,12 +11,12 @@ import {
 } from "./tournaments/tournament-store";
 
 const statusLabels: Record<TournamentStatus, string> = {
-  DRAFT: "Draft",
-  REGISTRATION_OPEN: "Registration open",
-  REGISTRATION_CLOSED: "Registration closed",
-  ONGOING: "Ongoing",
-  FINISHED: "Finished",
-  CANCELLED: "Cancelled",
+  CANCELLED: "Otkazan",
+  DRAFT: "U pripremi",
+  FINISHED: "Završen",
+  ONGOING: "U toku",
+  REGISTRATION_CLOSED: "U pripremi",
+  REGISTRATION_OPEN: "U pripremi",
 };
 
 const statusStyles: Record<TournamentStatus, string> = {
@@ -26,22 +26,6 @@ const statusStyles: Record<TournamentStatus, string> = {
   ONGOING: "bg-[#F97316]/15 text-[#FDBA74]",
   FINISHED: "bg-[#38BDF8]/15 text-[#7DD3FC]",
   CANCELLED: "bg-[#EF4444]/15 text-[#FCA5A5]",
-};
-
-const matchStatusLabels: Record<MatchStatus, string> = {
-  CANCELLED: "Cancelled",
-  FINISHED: "Finished",
-  LIVE: "Live",
-  PAUSED: "Paused",
-  SCHEDULED: "Scheduled",
-};
-
-const matchStatusStyles: Record<MatchStatus, string> = {
-  CANCELLED: "bg-white/10 text-[#CBD5E1]",
-  FINISHED: "bg-[#38BDF8]/15 text-[#7DD3FC]",
-  LIVE: "bg-[#22C55E]/15 text-[#86EFAC]",
-  PAUSED: "bg-[#FACC15]/15 text-[#FDE68A]",
-  SCHEDULED: "bg-[#F97316]/15 text-[#FDBA74]",
 };
 
 export function DashboardClient() {
@@ -57,10 +41,6 @@ export function DashboardClient() {
     (match) => match.status === "LIVE" || match.status === "PAUSED",
   );
   const finishedMatches = matches.filter((match) => match.status === "FINISHED");
-  const nextMatches = [...matches]
-    .filter((match) => match.status !== "CANCELLED")
-    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
-    .slice(0, 4);
   const confirmedTeams = teams.filter((team) => team.status === "CONFIRMED");
   const teamsWithEnoughPlayers = teams.filter(
     (team) => players.filter((player) => player.teamId === team.id).length >= 3,
@@ -72,37 +52,11 @@ export function DashboardClient() {
       <header className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-medium text-[#94A3B8]">
-            Organizer dashboard
+            Pregled za organizatora
           </p>
           <h2 className="mt-1 text-3xl font-bold tracking-normal">
-            Pregled turnira
+            3x3 Organizator
           </h2>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            className="inline-flex h-11 items-center justify-center rounded-md bg-[#F97316] px-4 text-sm font-bold text-[#111827] transition hover:bg-[#FACC15]"
-            href="/tournaments"
-          >
-            Novi turnir
-          </Link>
-          <Link
-            className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
-            href="/live-score"
-          >
-            Otvori live score
-          </Link>
-          <Link
-            className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
-            href="/standings"
-          >
-            Tabele
-          </Link>
-          <Link
-            className="inline-flex h-11 items-center justify-center rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
-            href="/player-stats"
-          >
-            Statistika
-          </Link>
         </div>
       </header>
 
@@ -118,26 +72,26 @@ export function DashboardClient() {
           value={tournaments.length.toString()}
         />
         <MetricCard
-          detail={`${confirmedTeams.length} potvrdjenih ekipa`}
+          detail={`${confirmedTeams.length} ručno dodatih ekipa`}
           label="Ekipe"
           tone="green"
           value={teams.length.toString()}
         />
         <MetricCard
-          detail={`${teamsWithEnoughPlayers.length} ekipa ima 3+ igraca`}
-          label="Igraci"
+          detail={`${teamsWithEnoughPlayers.length} ekipa ima 3+ igrača`}
+          label="Igrači"
           tone="yellow"
           value={players.length.toString()}
         />
         <MetricCard
-          detail={`${finishedMatches.length} zavrsenih / ${activeMatches.length} live`}
+          detail={`${finishedMatches.length} završenih / ${activeMatches.length} uživo`}
           label="Utakmice"
           tone="blue"
           value={matches.length.toString()}
         />
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+      <div className="mt-6 grid gap-6">
         <section className="rounded-lg border border-white/10 bg-[#111827] p-4 shadow-[0_18px_40px_rgba(2,6,23,0.22)] sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -160,7 +114,7 @@ export function DashboardClient() {
             <EmptyState
               actionHref="/tournaments"
               actionText="Napravi turnir"
-              text="Kada napravis turnir, ovde ce se pojaviti datumi, kapacitet i status."
+              text="Kada napravis turnir, ovde će se pojaviti datumi, kapacitet i status."
               title="Jos nema turnira"
             />
           ) : (
@@ -178,106 +132,8 @@ export function DashboardClient() {
             </div>
           )}
         </section>
-
-        <section className="rounded-lg border border-white/10 bg-[#111827] p-4 shadow-[0_18px_40px_rgba(2,6,23,0.22)] sm:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-bold tracking-normal">
-                Sledeci koraci
-              </h3>
-              <p className="mt-1 text-sm text-[#94A3B8]">
-                Dashboard sada prikazuje spremnost sistema.
-              </p>
-            </div>
-            <span className="rounded-md bg-[#F97316]/15 px-2 py-1 text-xs font-black text-[#FACC15]">
-              MVP
-            </span>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            <ChecklistItem
-              done={tournaments.length > 0}
-              text="Kreiran bar jedan turnir"
-            />
-            <ChecklistItem
-              done={teams.length > 0}
-              text="Dodate ekipe za turnir"
-            />
-            <ChecklistItem
-              done={players.length > 0}
-              text="Dodati igraci u ekipe"
-            />
-            <ChecklistItem
-              done={matches.length > 0}
-              text="Kreiran raspored utakmica"
-            />
-            <ChecklistItem
-              done={finishedMatches.length > 0}
-              text="Tabela ima zavrsen rezultat"
-            />
-            <ChecklistItem
-              done={
-                activeMatches.length > 0 ||
-                finishedMatches.length > 0
-              }
-              text="Live score povezan sa utakmicom"
-            />
-            <ChecklistItem
-              done={tournaments.some((tournament) => tournament.registrationOpen)}
-              text="Otvorene prijave za neki turnir"
-            />
-          </div>
-        </section>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <ReadinessPanel
-          description={
-            tournaments.length > 0
-              ? "Turnirski podaci su povezani sa ekipama, rosterima i rasporedom."
-              : "Prvi realan podatak koji treba uneti je turnir."
-          }
-          title="Turnirski setup"
-        >
-          <div className="grid gap-3 sm:grid-cols-4">
-            <SmallMetric label="Draft" value={countStatus(tournaments, "DRAFT")} />
-            <SmallMetric
-              label="Ekipe"
-              value={teams.length}
-            />
-            <SmallMetric
-              label="Roster ready"
-              value={teamsWithEnoughPlayers.length}
-            />
-            <SmallMetric label="Odigrano" value={finishedMatches.length} />
-          </div>
-        </ReadinessPanel>
-
-        <ReadinessPanel
-          description="Zakazane utakmice se otvaraju direktno u live score-u, a rezultat se vraca u raspored."
-          title="Raspored i rezultati"
-        >
-          {nextMatches.length === 0 ? (
-            <EmptyState
-              actionHref="/matches"
-              actionText="Zakazi utakmicu"
-              text="Jos nema utakmica u sistemu."
-              title="Nema zakazanih meceva"
-            />
-          ) : (
-            <div className="grid gap-3">
-              {nextMatches.map((match) => (
-                <MatchRow
-                  key={match.id}
-                  match={match}
-                  teamAName={getTeamName(match.teamAId, teams)}
-                  teamBName={getTeamName(match.teamBId, teams)}
-                />
-              ))}
-            </div>
-          )}
-        </ReadinessPanel>
-      </div>
     </>
   );
 }
@@ -328,83 +184,12 @@ function TournamentRow({
             {tournament.city}, {tournament.country} / {tournament.location}
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-2 md:w-[300px]">
+        <div className="grid grid-cols-2 gap-2 md:w-[220px]">
           <SmallMetric label="Datum" value={formatDate(tournament.startDate)} />
-          <SmallMetric label="Tereni" value={tournament.numberOfCourts} />
           <SmallMetric label="Ekipe" value={`${teamCount}/${tournament.maxTeams}`} />
         </div>
       </div>
     </article>
-  );
-}
-
-function MatchRow({
-  match,
-  teamAName,
-  teamBName,
-}: {
-  match: Match;
-  teamAName: string;
-  teamBName: string;
-}) {
-  return (
-    <article className="rounded-lg border border-white/10 bg-[#0F172A] p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <span className={`rounded-md px-2 py-1 text-xs font-black ${matchStatusStyles[match.status]}`}>
-            {matchStatusLabels[match.status]}
-          </span>
-          <h4 className="mt-3 text-lg font-black text-white">
-            {teamAName} vs {teamBName}
-          </h4>
-          <p className="mt-1 text-sm text-[#94A3B8]">
-            {match.courtName} / {formatDateTime(match.scheduledTime)}
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:w-[220px]">
-          <SmallMetric label="Score" value={`${match.scoreA}:${match.scoreB}`} />
-          <Link
-            className="inline-flex min-h-[58px] items-center justify-center rounded-md bg-[#F97316] px-3 text-sm font-black text-[#111827] transition hover:bg-[#FACC15]"
-            href={`/live-score?matchId=${match.id}`}
-          >
-            Live
-          </Link>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function ChecklistItem({ done, text }: { done: boolean; text: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-md border border-white/10 bg-[#0F172A] px-3 py-3">
-      <span
-        className={`flex h-6 w-6 items-center justify-center rounded-md text-xs font-black ${
-          done ? "bg-[#22C55E] text-[#052E16]" : "bg-white/10 text-[#94A3B8]"
-        }`}
-      >
-        {done ? "OK" : "-"}
-      </span>
-      <p className="text-sm font-semibold text-[#CBD5E1]">{text}</p>
-    </div>
-  );
-}
-
-function ReadinessPanel({
-  children,
-  description,
-  title,
-}: {
-  children: React.ReactNode;
-  description: string;
-  title: string;
-}) {
-  return (
-    <section className="rounded-lg border border-white/10 bg-[#111827] p-4 shadow-[0_18px_40px_rgba(2,6,23,0.22)] sm:p-5">
-      <h3 className="text-xl font-bold tracking-normal">{title}</h3>
-      <p className="mt-1 text-sm text-[#94A3B8]">{description}</p>
-      <div className="mt-5">{children}</div>
-    </section>
   );
 }
 
@@ -450,10 +235,6 @@ function EmptyState({
   );
 }
 
-function countStatus(tournaments: Tournament[], status: TournamentStatus) {
-  return tournaments.filter((tournament) => tournament.status === status).length;
-}
-
 function formatDate(value: string) {
   const date = new Date(`${value}T00:00:00`);
 
@@ -462,23 +243,6 @@ function formatDate(value: string) {
     month: "2-digit",
     year: "2-digit",
   }).format(date);
-}
-
-function formatDateTime(value: string) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("sr-RS", {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "2-digit",
-  }).format(new Date(value));
-}
-
-function getTeamName(teamId: string, teams: Team[]) {
-  return teams.find((team) => team.id === teamId)?.name ?? "Nepoznata ekipa";
 }
 
 function toneClassName(tone: "blue" | "green" | "orange" | "yellow") {

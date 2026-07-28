@@ -1,4 +1,4 @@
-import type { Match } from "../matches/match-store";
+import { getMatchPhase, type Match } from "../matches/match-store";
 import type { Team } from "../teams/team-store";
 
 export type StandingRow = {
@@ -31,6 +31,10 @@ export function calculateStandings({
   const rowsByTeamId = new Map<string, MutableStandingRow>();
 
   for (const team of teams) {
+    if (!team.groupName.trim()) {
+      continue;
+    }
+
     rowsByTeamId.set(team.id, {
       groupName: normalizeGroupName(team.groupName),
       losses: 0,
@@ -44,7 +48,7 @@ export function calculateStandings({
   }
 
   for (const match of matches) {
-    if (match.status !== "FINISHED") {
+    if (match.status !== "FINISHED" || getMatchPhase(match) !== "GROUP_STAGE") {
       continue;
     }
 
@@ -113,5 +117,5 @@ function compareStandingRows(a: StandingRow, b: StandingRow) {
 function normalizeGroupName(value: string) {
   const groupName = value.trim();
 
-  return groupName ? `Grupa ${groupName}` : "Bez grupe";
+  return `Grupa ${groupName}`;
 }

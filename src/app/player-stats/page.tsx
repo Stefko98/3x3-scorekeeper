@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { AppShell } from "../app-shell";
 import { PlayerStats } from "./player-stats-client";
 
 export const metadata: Metadata = {
-  title: "Statistika igraca | 3x3 Tournament Manager",
-  description: "Top 5 liste igraca po poenima, sutevima i faulovima.",
+  title: "Statistika igrača | 3x3 Organizator",
+  description:
+    "Kompletna statistika igrača i ekipa, MVP rang-lista i rekordi 3x3 turnira.",
 };
 
 export default function PlayerStatsPage() {

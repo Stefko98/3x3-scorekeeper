@@ -1,4 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CourtFlow 3x3 Organizator
+
+## Pokretanje na Linuxu
+
+Na glavnom Linux racunaru, iz foldera `3x3 Basket`, pokreni:
+
+```bash
+bash "Pokreni aplikaciju Linux.sh"
+```
+
+Skripta automatski:
+
+- proverava Node.js 20.9 ili noviji
+- po potrebi preuzima lokalni Node.js runtime bez menjanja sistema
+- instalira Linux pakete aplikacije
+- pravi produkcioni build
+- pokrece server na `0.0.0.0:3000`
+- prikazuje adresu za sporedni laptop
+
+Na sporednom Linux laptopu pokreni:
+
+```bash
+bash "Otvori na sporednom laptopu Linux.sh"
+```
+
+Za direktno prosledjivanje IP adrese glavnog racunara:
+
+```bash
+bash "Otvori na sporednom laptopu Linux.sh" 192.168.1.5
+```
+
+Oba racunara moraju biti na istoj Wi-Fi ili hotspot mrezi.
+
+Za pokretanje dvoklikom prvo jednom dozvoli izvrsavanje:
+
+```bash
+chmod +x "Pokreni aplikaciju Linux.sh"
+chmod +x "Otvori na sporednom laptopu Linux.sh"
+```
 
 ## Getting Started
 

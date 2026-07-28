@@ -1,7 +1,9 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { confirmDelete } from "../lib/confirm-delete";
+import { createId } from "../lib/id";
 import { useTeams, type Team } from "../teams/team-store";
 import { useTournaments, type Tournament } from "../tournaments/tournament-store";
 import {
@@ -9,15 +11,12 @@ import {
   savePlayers,
   usePlayers,
   type Player,
-  type PlayerPosition,
 } from "./player-store";
 
 type PlayerFormState = {
   firstName: string;
-  jerseyNumber: string;
   lastName: string;
-  nickname: string;
-  position: PlayerPosition;
+  photoUrl: string;
   teamId: string;
 };
 
@@ -25,24 +24,16 @@ type FormErrors = Partial<Record<keyof PlayerFormState | "tournament", string>>;
 
 const defaultFormState: PlayerFormState = {
   firstName: "",
-  jerseyNumber: "",
   lastName: "",
-  nickname: "",
-  position: "FLEX",
+  photoUrl: "",
   teamId: "",
-};
-
-const positionLabels: Record<PlayerPosition, string> = {
-  BIG: "Big",
-  FLEX: "Flex",
-  GUARD: "Guard",
-  WING: "Wing",
 };
 
 export function PlayerManagerClient() {
   const players = usePlayers();
   const teams = useTeams();
   const tournaments = useTournaments();
+  const [editingPlayerId, setEditingPlayerId] = useState<string>();
   const [errors, setErrors] = useState<FormErrors>({});
   const [form, setForm] = useState<PlayerFormState>(defaultFormState);
   const [selectedTournamentId, setSelectedTournamentId] = useState<string>();
@@ -68,9 +59,6 @@ export function PlayerManagerClient() {
   const selectedTeam =
     tournamentTeams.find((team) => team.id === form.teamId) ??
     tournamentTeams[0];
-  const selectedTeamPlayers = selectedTeam
-    ? players.filter((player) => player.teamId === selectedTeam.id)
-    : [];
 
   const metrics = useMemo(
     () => ({
@@ -95,14 +83,20 @@ export function PlayerManagerClient() {
     setErrors((currentErrors) => ({ ...currentErrors, [field]: undefined }));
   }
 
-  function createPlayer(event: React.FormEvent<HTMLFormElement>) {
+  function changeTournament(tournamentId: string) {
+    setSelectedTournamentId(tournamentId);
+    setEditingPlayerId(undefined);
+    setForm(defaultFormState);
+    setErrors({});
+  }
+
+  function savePlayer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const nextErrors = validateForm(
       form,
       selectedTournament,
       selectedTeam,
-      selectedTeamPlayers,
     );
     setErrors(nextErrors);
 
@@ -111,43 +105,90 @@ export function PlayerManagerClient() {
     }
 
     const now = new Date().toISOString();
+
+    if (editingPlayerId) {
+      savePlayers(
+        players.map((player) =>
+          player.id === editingPlayerId
+            ? {
+                ...player,
+                firstName: form.firstName.trim(),
+                lastName: form.lastName.trim(),
+                photoUrl: form.photoUrl.trim(),
+                teamId: selectedTeam.id,
+                tournamentId: selectedTournament.id,
+                updatedAt: now,
+              }
+            : player,
+        ),
+      );
+      resetForm(selectedTeam.id);
+      return;
+    }
+
     const player: Player = {
       createdAt: now,
       firstName: form.firstName.trim(),
-      id: crypto.randomUUID(),
-      jerseyNumber: Number(form.jerseyNumber),
+      id: createId("player"),
+      jerseyNumber: 0,
       lastName: form.lastName.trim(),
-      nickname: form.nickname.trim(),
-      position: form.position,
+      photoUrl: form.photoUrl.trim(),
       teamId: selectedTeam.id,
       tournamentId: selectedTournament.id,
       updatedAt: now,
     };
 
     savePlayers([player, ...players]);
+    resetForm(selectedTeam.id);
+  }
+
+  function startEditPlayer(player: Player) {
+    setEditingPlayerId(player.id);
+    setSelectedTournamentId(player.tournamentId);
+    setForm({
+      firstName: player.firstName,
+      lastName: player.lastName,
+      photoUrl: player.photoUrl,
+      teamId: player.teamId,
+    });
+    setErrors({});
+  }
+
+  function resetForm(teamId = selectedTeam?.id ?? "") {
+    setEditingPlayerId(undefined);
     setForm({
       ...defaultFormState,
-      teamId: selectedTeam.id,
+      teamId,
     });
     setErrors({});
   }
 
   function deletePlayer(playerId: string) {
+    if (!confirmDelete()) {
+      return;
+    }
+
     savePlayers(players.filter((player) => player.id !== playerId));
+
+    if (editingPlayerId === playerId) {
+      resetForm();
+    }
   }
 
   return (
     <div>
       <header className="flex flex-col gap-4 border-b border-white/10 pb-5 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <p className="text-sm font-medium text-[#94A3B8]">Roster builder</p>
-          <h2 className="mt-1 text-3xl font-bold tracking-normal">Igraci</h2>
+          <p className="text-sm font-medium text-[#94A3B8]">
+            Spisak igrača
+          </p>
+          <h2 className="mt-1 text-3xl font-bold tracking-normal">Igrači</h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-4">
-          <Metric label="Igraci" value={metrics.players.toString()} />
+          <Metric label="Igrači" value={metrics.players.toString()} />
           <Metric label="Ekipe" value={metrics.teams.toString()} />
-          <Metric label="3+ igraca" value={metrics.readyTeams.toString()} />
-          <Metric label="Bez rostera" value={metrics.withoutRoster.toString()} />
+          <Metric label="3+ igrača" value={metrics.readyTeams.toString()} />
+          <Metric label="Bez igrača" value={metrics.withoutRoster.toString()} />
         </div>
       </header>
 
@@ -155,31 +196,35 @@ export function PlayerManagerClient() {
         <EmptyState
           actionHref="/tournaments"
           actionText="Napravi turnir"
-          text="Igraci se dodaju u ekipe, a ekipe pripadaju turniru."
+          text="Igrači se dodaju u ekipe, a ekipe pripadaju turniru."
           title="Prvo napravi turnir"
         />
       ) : tournamentTeams.length === 0 ? (
         <EmptyState
           actionHref="/teams"
           actionText="Dodaj ekipe"
-          text="Kada postoje ekipe, ovde pravis roster za svaku od njih."
+          text="Kada postoje ekipe, ovde pravis spisak igrača za svaku od njih."
           title="Prvo dodaj ekipe"
         />
       ) : (
-        <div className="mt-6 grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <div className="mt-6 grid gap-6 2xl:grid-cols-[400px_minmax(0,1fr)]">
           <section className="rounded-lg border border-white/10 bg-[#111827] p-4 shadow-[0_18px_40px_rgba(2,6,23,0.22)] sm:p-5">
             <div>
-              <h3 className="text-xl font-bold tracking-normal">Novi igrac</h3>
+              <h3 className="text-xl font-bold tracking-normal">
+                {editingPlayerId ? "Izmena igrača" : "Novi igrač"}
+              </h3>
               <p className="mt-1 text-sm text-[#94A3B8]">
-                Igrac se cuva u rosteru izabrane ekipe.
+                {editingPlayerId
+                  ? "Izmeni podatke i sačuvaj promene."
+                  : "Igrač se čuva u izabranoj ekipi."}
               </p>
             </div>
 
-            <form className="mt-5 space-y-4" onSubmit={createPlayer}>
+            <form className="mt-5 space-y-4" onSubmit={savePlayer}>
               <SelectField
                 label="Turnir"
                 name="player-tournament"
-                onChange={setSelectedTournamentId}
+                onChange={changeTournament}
                 options={Object.fromEntries(
                   tournaments.map((tournament) => [
                     tournament.id,
@@ -218,34 +263,12 @@ export function PlayerManagerClient() {
                 />
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  error={errors.jerseyNumber}
-                  label="Broj dresa"
-                  min={0}
-                  name="player-jersey"
-                  onChange={(value) => updateField("jerseyNumber", value)}
-                  placeholder="7"
-                  type="number"
-                  value={form.jerseyNumber}
-                />
-                <SelectField
-                  label="Pozicija"
-                  name="player-position"
-                  onChange={(value) =>
-                    updateField("position", value as PlayerPosition)
-                  }
-                  options={positionLabels}
-                  value={form.position}
-                />
-              </div>
-
               <TextField
-                label="Nadimak"
-                name="player-nickname"
-                onChange={(value) => updateField("nickname", value)}
-                placeholder="optional"
-                value={form.nickname}
+                label="URL slike"
+                name="player-photo-url"
+                onChange={(value) => updateField("photoUrl", value)}
+                placeholder="https://..."
+                value={form.photoUrl}
               />
 
               {errors.tournament && (
@@ -259,15 +282,26 @@ export function PlayerManagerClient() {
                 data-testid="create-player"
                 type="submit"
               >
-                Sacuvaj igraca
+                {editingPlayerId ? "Sačuvaj izmene" : "Sačuvaj igrača"}
               </button>
+              {editingPlayerId && (
+                <button
+                  className="h-11 w-full rounded-md border border-white/15 px-4 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
+                  onClick={() => resetForm()}
+                  type="button"
+                >
+                  Odustani
+                </button>
+              )}
             </form>
           </section>
 
           <section className="rounded-lg border border-white/10 bg-[#111827] p-4 shadow-[0_18px_40px_rgba(2,6,23,0.22)] sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h3 className="text-xl font-bold tracking-normal">Rosteri</h3>
+                <h3 className="text-xl font-bold tracking-normal">
+                  Spiskovi igrača
+                </h3>
                 <p className="mt-1 text-sm text-[#94A3B8]">
                   {selectedTournament?.name ?? "Izaberi turnir"}
                 </p>
@@ -276,7 +310,7 @@ export function PlayerManagerClient() {
                 className="inline-flex h-10 items-center justify-center rounded-md border border-white/15 px-3 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
                 href="/matches"
               >
-                Zakazi utakmice
+                Zakaži utakmice
               </Link>
             </div>
 
@@ -285,9 +319,14 @@ export function PlayerManagerClient() {
                 <TeamRoster
                   key={team.id}
                   onDeletePlayer={deletePlayer}
+                  onEditPlayer={startEditPlayer}
                   players={players
                     .filter((player) => player.teamId === team.id)
-                    .sort((a, b) => a.jerseyNumber - b.jerseyNumber)}
+                    .sort((a, b) =>
+                      getPlayerDisplayName(a).localeCompare(
+                        getPlayerDisplayName(b),
+                      ),
+                    )}
                   team={team}
                 />
               ))}
@@ -301,10 +340,12 @@ export function PlayerManagerClient() {
 
 function TeamRoster({
   onDeletePlayer,
+  onEditPlayer,
   players,
   team,
 }: {
   onDeletePlayer: (playerId: string) => void;
+  onEditPlayer: (player: Player) => void;
   players: Player[];
   team: Team;
 }) {
@@ -314,7 +355,7 @@ function TeamRoster({
         <div>
           <h4 className="text-lg font-black text-white">{team.name}</h4>
           <p className="text-sm text-[#94A3B8]">
-            {team.city} / {players.length} igraca
+            {team.city} / {players.length} igrača
           </p>
         </div>
         <span
@@ -330,7 +371,7 @@ function TeamRoster({
 
       {players.length === 0 ? (
         <p className="mt-4 rounded-md border border-dashed border-white/15 px-3 py-3 text-sm text-[#94A3B8]">
-          Nema igraca u ovoj ekipi.
+          Nema igrača u ovoj ekipi.
         </p>
       ) : (
         <div className="mt-4 grid gap-2">
@@ -342,19 +383,28 @@ function TeamRoster({
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-white">
-                  #{player.jerseyNumber} {getPlayerDisplayName(player)}
+                  {getPlayerDisplayName(player)}
                 </p>
                 <p className="mt-1 text-xs text-[#94A3B8]">
-                  {positionLabels[player.position]}
+                  {team.name}
                 </p>
               </div>
-              <button
-                className="h-9 rounded-md border border-[#EF4444]/60 px-3 text-sm font-bold text-[#FCA5A5] transition hover:bg-[#EF4444] hover:text-white"
-                onClick={() => onDeletePlayer(player.id)}
-                type="button"
-              >
-                Obrisi
-              </button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  className="h-9 rounded-md border border-white/15 px-3 text-sm font-bold text-white transition hover:border-[#F97316] hover:text-[#FACC15]"
+                  onClick={() => onEditPlayer(player)}
+                  type="button"
+                >
+                  Izmeni
+                </button>
+                <button
+                  className="h-9 rounded-md border border-[#EF4444]/60 px-3 text-sm font-bold text-[#FCA5A5] transition hover:bg-[#EF4444] hover:text-white"
+                  onClick={() => onDeletePlayer(player.id)}
+                  type="button"
+                >
+                  Obriši
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -486,10 +536,8 @@ function validateForm(
   form: PlayerFormState,
   selectedTournament: Tournament | undefined,
   selectedTeam: Team | undefined,
-  teamPlayers: Player[],
 ) {
   const errors: FormErrors = {};
-  const jerseyNumber = Number(form.jerseyNumber);
 
   if (!selectedTournament) {
     errors.tournament = "Izaberi turnir.";
@@ -505,18 +553,6 @@ function validateForm(
 
   if (!form.lastName.trim()) {
     errors.lastName = "Prezime je obavezno.";
-  }
-
-  if (
-    !Number.isInteger(jerseyNumber) ||
-    jerseyNumber < 0 ||
-    jerseyNumber > 99
-  ) {
-    errors.jerseyNumber = "Broj dresa mora biti od 0 do 99.";
-  } else if (
-    teamPlayers.some((player) => player.jerseyNumber === jerseyNumber)
-  ) {
-    errors.jerseyNumber = "Taj broj vec postoji u ekipi.";
   }
 
   return errors;

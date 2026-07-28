@@ -3,7 +3,7 @@ import { AppShell } from "../app-shell";
 import { StandingsClient } from "./standings-client";
 
 export const metadata: Metadata = {
-  title: "Tabele | 3x3 Tournament Manager",
+  title: "Tabele | 3x3 Organizator",
   description: "Tabele, poredak i rezultati po grupama za 3x3 turnire.",
 };
 

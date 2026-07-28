@@ -1,10 +1,10 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { AppShell } from "../app-shell";
 import { LiveScoreClient } from "./live-score-client";
 
 export const metadata: Metadata = {
-  title: "Live Score | 3x3 Tournament Manager",
-  description: "Interaktivni live scoring ekran za 3x3 utakmicu.",
+  title: "Rezultat uživo | 3x3 Organizator",
+  description: "Interaktivni ekran za vođenje 3x3 rezultata.",
 };
 
 type LiveScorePageProps = {
@@ -22,7 +22,7 @@ export default async function LiveScorePage({
     : params.matchId;
 
   return (
-    <AppShell activeModule="Live Score">
+    <AppShell activeModule="Rezultat uživo">
       <LiveScoreClient
         initialMatchId={initialMatchId}
         key={initialMatchId ?? "live-score"}

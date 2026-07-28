@@ -5,9 +5,12 @@ import { createLocalStorageStore } from "../lib/create-local-storage-store";
 export type MatchEventType =
   | "POINT"
   | "FOUL"
+  | "ASSIST"
+  | "REBOUND"
   | "START_MATCH"
   | "PAUSE_MATCH"
   | "RESUME_MATCH"
+  | "START_OVERTIME"
   | "FINISH_MATCH"
   | "DELETE_EVENT";
 
@@ -18,12 +21,16 @@ export type MatchEvent = {
   description?: string;
   id: string;
   isDeleted: boolean;
+  jerseyNumber?: number;
   matchId: string;
   playerId?: string;
   points?: 1 | 2;
+  scoreA?: number;
+  scoreB?: number;
   teamId?: string;
   tournamentId: string;
   type: MatchEventType;
+  updatedAt?: string;
 };
 
 const matchEventStore = createLocalStorageStore<MatchEvent>({
@@ -49,6 +56,7 @@ function isMatchEvent(value: unknown): value is MatchEvent {
     typeof event.isDeleted === "boolean" &&
     typeof event.matchId === "string" &&
     typeof event.tournamentId === "string" &&
-    typeof event.type === "string"
+    typeof event.type === "string" &&
+    (event.updatedAt === undefined || typeof event.updatedAt === "string")
   );
 }

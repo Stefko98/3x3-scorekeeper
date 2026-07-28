@@ -9,13 +9,12 @@ export type TeamStatus =
   | "WITHDRAWN";
 
 export type Team = {
+  captainPhone: string;
   city: string;
-  contactEmail: string;
-  contactPerson: string;
-  contactPhone: string;
   createdAt: string;
   groupName: string;
   id: string;
+  logoUrl: string;
   name: string;
   status: TeamStatus;
   tournamentId: string;

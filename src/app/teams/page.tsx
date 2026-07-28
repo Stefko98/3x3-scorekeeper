@@ -3,7 +3,7 @@ import { AppShell } from "../app-shell";
 import { TeamManagerClient } from "./team-manager-client";
 
 export const metadata: Metadata = {
-  title: "Ekipe | 3x3 Tournament Manager",
+  title: "Ekipe | 3x3 Organizator",
   description: "Upravljanje ekipama za 3x3 turnire.",
 };
 

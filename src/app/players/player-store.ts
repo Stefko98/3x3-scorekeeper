@@ -2,16 +2,13 @@
 
 import { createLocalStorageStore } from "../lib/create-local-storage-store";
 
-export type PlayerPosition = "GUARD" | "WING" | "BIG" | "FLEX";
-
 export type Player = {
   createdAt: string;
   firstName: string;
   id: string;
   jerseyNumber: number;
   lastName: string;
-  nickname: string;
-  position: PlayerPosition;
+  photoUrl: string;
   teamId: string;
   tournamentId: string;
   updatedAt: string;
@@ -27,13 +24,7 @@ export const usePlayers = playerStore.useItems;
 export const savePlayers = playerStore.saveItems;
 
 export function getPlayerDisplayName(player: Player) {
-  const name = `${player.firstName} ${player.lastName}`.trim();
-
-  if (!player.nickname.trim()) {
-    return name;
-  }
-
-  return `${name} "${player.nickname.trim()}"`;
+  return `${player.firstName} ${player.lastName}`.trim();
 }
 
 function isPlayer(value: unknown): value is Player {

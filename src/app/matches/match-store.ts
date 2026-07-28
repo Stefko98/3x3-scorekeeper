@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { createLocalStorageStore } from "../lib/create-local-storage-store";
 
@@ -9,7 +9,13 @@ export type MatchStatus =
   | "FINISHED"
   | "CANCELLED";
 
-export type MatchType =
+export type MatchPhase =
+  | "GROUP_STAGE"
+  | "QUARTER_FINAL"
+  | "SEMI_FINAL"
+  | "FINAL";
+
+export type LegacyMatchType =
   | "GROUP_MATCH"
   | "QUARTER_FINAL"
   | "SEMI_FINAL"
@@ -18,13 +24,19 @@ export type MatchType =
   | "FRIENDLY";
 
 export type Match = {
+  clockRemainingSeconds?: number;
+  clockUpdatedAt?: string;
   courtName: string;
   createdAt: string;
   finishedAt?: string;
   foulsA: number;
   foulsB: number;
   id: string;
-  matchType: MatchType;
+  matchPhase: MatchPhase;
+  matchType?: LegacyMatchType;
+  overtimeStartedAt?: string;
+  overtimeStartingScoreA?: number;
+  overtimeStartingScoreB?: number;
   scheduledTime: string;
   scoreA: number;
   scoreB: number;
@@ -45,6 +57,37 @@ const matchStore = createLocalStorageStore<Match>({
 
 export const useMatches = matchStore.useItems;
 export const saveMatches = matchStore.saveItems;
+
+export const matchPhaseLabels: Record<MatchPhase, string> = {
+  FINAL: "Finale",
+  GROUP_STAGE: "Grupna faza",
+  QUARTER_FINAL: "Četvrtfinale",
+  SEMI_FINAL: "Polufinale",
+};
+
+export function getMatchPhase(match: Match): MatchPhase {
+  if (match.matchPhase) {
+    return match.matchPhase;
+  }
+
+  if (match.matchType === "QUARTER_FINAL") {
+    return "QUARTER_FINAL";
+  }
+
+  if (match.matchType === "SEMI_FINAL") {
+    return "SEMI_FINAL";
+  }
+
+  if (match.matchType === "FINAL") {
+    return "FINAL";
+  }
+
+  return "GROUP_STAGE";
+}
+
+export function isKnockoutPhase(match: Match) {
+  return getMatchPhase(match) !== "GROUP_STAGE";
+}
 
 function isMatch(value: unknown): value is Match {
   if (typeof value !== "object" || value === null) {

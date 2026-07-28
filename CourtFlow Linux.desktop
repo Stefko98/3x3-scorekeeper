@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CourtFlow 3x3 Organizator
+Comment=Pokreni CourtFlow na glavnom Linux laptopu
+Exec=bash -c 'launcher_path="${1#file://}"; launcher_path="${launcher_path//%%20/ }"; cd "$(dirname "$launcher_path")" && exec bash "./pokreni-linux.sh"' launcher %k
+Icon=utilities-terminal
+Terminal=true
+Categories=Utility;
