@@ -477,10 +477,10 @@ function createPairings(
     createSeedPairings(seedQualifiedTeams(qualifiedRows, bracketSize), bracketSize);
   const phase = getOpeningPhase(bracketSize);
 
-  return pairedRows.map(([teamA, teamB], index) => ({
+  return pairedRows.map(([teamA, teamB]) => ({
     phase,
-    seedA: index + 1,
-    seedB: index + 1,
+    seedA: teamA.seed,
+    seedB: teamB.seed,
     teamA: teamA.row.team,
     teamB: teamB.row.team,
   }));
@@ -539,6 +539,15 @@ function createStructuredPairings(
   }
 
   if (bracketSize === 4) {
+    const singleGroupRows = getRowsByGroup(qualifiedRows, 1)?.[0];
+
+    if (singleGroupRows && singleGroupRows.length >= 4) {
+      return [
+        [singleGroupRows[0], singleGroupRows[3]],
+        [singleGroupRows[1], singleGroupRows[2]],
+      ];
+    }
+
     const twoGroups = getRowsByGroup(qualifiedRows, 2);
 
     if (twoGroups?.every((groupRows) => groupRows.length >= 2)) {
