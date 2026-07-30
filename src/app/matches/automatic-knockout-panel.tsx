@@ -64,13 +64,9 @@ export function AutomaticKnockoutPanel({
               key={`${pairing.teamA.id}-${pairing.teamB.id}`}
             >
               <span className="text-[#FACC15]">{index + 1}.</span>
-              <span className="truncate">
-                {pairing.seedA}. {pairing.teamA.name}
-              </span>
+              <span className="truncate">{pairing.teamA.name}</span>
               <span className="text-center text-[#94A3B8]">protiv</span>
-              <span className="truncate">
-                {pairing.seedB}. {pairing.teamB.name}
-              </span>
+              <span className="truncate">{pairing.teamB.name}</span>
             </div>
           ))}
         </div>

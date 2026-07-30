@@ -141,11 +141,6 @@ const standardGroupCountOptions: Record<string, string> = {
   "4": "4 grupe",
 };
 
-const smallTournamentGroupCountOptions: Record<string, string> = {
-  "1": "1 grupa - svako sa svakim",
-  "2": "2 grupe - A i B",
-};
-
 const twelveTeamGroupCountOptions: Record<string, string> = {
   "2": "2 grupe - A i B",
   "4": "4 grupe - A, B, C i D",
@@ -1831,10 +1826,6 @@ function validateForm(form: TournamentFormState) {
 }
 
 function getGroupCountOptions(maxTeams: number) {
-  if (maxTeams <= 6) {
-    return smallTournamentGroupCountOptions;
-  }
-
   return maxTeams === 12
     ? twelveTeamGroupCountOptions
     : standardGroupCountOptions;

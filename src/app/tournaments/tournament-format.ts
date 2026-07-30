@@ -40,13 +40,6 @@ export function getRecommendedTournamentFormat(teamCount: number) {
     };
   }
 
-  if (teamCount <= 6) {
-    return {
-      groupCount: 1,
-      knockoutTeams: 4 as KnockoutTeams,
-    };
-  }
-
   if (teamCount <= 8) {
     return {
       groupCount: 2,
@@ -115,10 +108,6 @@ export function normalizeGroupCount(value: number | undefined, fallback: number)
 }
 
 export function getQualifiersPerGroupText(groupCount: number, knockoutTeams: KnockoutTeams) {
-  if (groupCount === 1) {
-    return `Prve ${knockoutTeams} ekipe`;
-  }
-
   const base = Math.floor(knockoutTeams / groupCount);
   const extra = knockoutTeams % groupCount;
 
