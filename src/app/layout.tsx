@@ -1,4 +1,5 @@
 ﻿import type { Metadata } from "next";
+import { LanguageProvider } from "./i18n/language-provider";
 import { SharedStoreBootstrap } from "./shared-store-bootstrap";
 import "./globals.css";
 
@@ -20,8 +21,10 @@ export default async function RootLayout({
       className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col">
-        <SharedStoreBootstrap />
-        {children}
+        <LanguageProvider>
+          <SharedStoreBootstrap />
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );

@@ -1,5 +1,6 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
+import { LanguageSwitcher } from "./i18n/language-provider";
 
 const modules = [
   "Početna",
@@ -34,7 +35,7 @@ export function AppShell({ activeModule, children }: AppShellProps) {
   return (
     <main className="min-h-screen bg-[#0F172A] text-[#F9FAFB]">
       <div className="flex min-h-screen flex-col lg:flex-row">
-        <aside className="border-b border-white/10 bg-[#111827] px-5 py-4 lg:sticky lg:top-0 lg:h-screen lg:w-52 lg:flex-none lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-4 lg:py-4 2xl:w-64 2xl:px-5 2xl:py-6">
+        <aside className="flex flex-col border-b border-white/10 bg-[#111827] px-5 py-4 lg:sticky lg:top-0 lg:h-screen lg:w-52 lg:flex-none lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-4 lg:py-4 2xl:w-64 2xl:px-5 2xl:py-6">
           <Link
             aria-label="Početna strana"
             className="inline-flex select-none items-center rounded-lg outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#F97316]"
@@ -64,6 +65,8 @@ export function AppShell({ activeModule, children }: AppShellProps) {
               );
             })}
           </nav>
+
+          <LanguageSwitcher />
         </aside>
 
         <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-4 lg:py-4 xl:px-5 2xl:px-8 2xl:py-7">
