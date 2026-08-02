@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { confirmDelete } from "../lib/confirm-delete";
 import { createId } from "../lib/id";
 import { orderMatchesForSchedule } from "../matches/auto-group-matches";
@@ -42,6 +42,10 @@ import {
   saveMatchJerseys,
   useMatchJerseys,
 } from "./match-jersey-store";
+import {
+  getMatchEndDecision,
+  type MatchEndDecision,
+} from "./match-end-rules";
 import { useMatchLock } from "./match-lock-store";
 
 type LiveScoreClientProps = {
@@ -90,7 +94,8 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
   const [selectedMatchStatusFilter, setSelectedMatchStatusFilter] =
     useState<MatchStatusFilter>("ALL");
   const [selectedTournamentId, setSelectedTournamentId] = useState<string>();
-  const regulationTransitionRef = useRef("");
+  const [dismissedEndDecisionKey, setDismissedEndDecisionKey] =
+    useState<string>();
 
   const availableMatches = useMemo(
     () => matches.filter((match) => match.status !== "CANCELLED"),
@@ -323,7 +328,6 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
   );
   const canEdit =
     selectedMatch?.status === "LIVE" &&
-    (remainingSeconds > 0 || isOvertime) &&
     Boolean(teamA && teamB) &&
     canControlSelectedMatch;
   const isFinished = selectedMatch?.status === "FINISHED";
@@ -333,15 +337,31 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
     !hasScorekeepingEvents &&
     !isOvertime &&
     (!isFinished || canRecoverInvalidFinishedMatch);
-  const canFinishMatch = Boolean(
-    selectedMatch &&
-      canControlSelectedMatch &&
-      selectedMatch.status !== "SCHEDULED" &&
-      selectedMatch.status !== "FINISHED" &&
-      ((remainingSeconds === 0 &&
-        !isOvertime &&
-        score.teamA !== score.teamB) ||
-        (isOvertime && hasOvertimeWinner(overtimeScore))),
+  const endDecision = selectedMatch
+    ? getMatchEndDecision({
+        matchStatus: selectedMatch.status,
+        overtimePointsToWin,
+        overtimeScore: isOvertime ? overtimeScore : undefined,
+        pointLimit,
+        remainingSeconds,
+        score,
+      })
+    : undefined;
+  const endDecisionKey =
+    selectedMatch && endDecision
+      ? [
+          selectedMatch.id,
+          endDecision,
+          score.teamA,
+          score.teamB,
+          isOvertime ? "overtime" : "regulation",
+        ].join(":")
+      : undefined;
+  const canOpenEndDecision = Boolean(
+    canControlSelectedMatch && endDecision && endDecisionKey,
+  );
+  const showEndDecision = Boolean(
+    canOpenEndDecision && endDecisionKey !== dismissedEndDecisionKey,
   );
   const selectedMatchIdForClock = selectedMatch?.id;
   const selectedMatchStatusForClock = selectedMatch?.status;
@@ -484,63 +504,6 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
     ],
   );
 
-  useEffect(() => {
-    if (
-      !selectedMatch ||
-      !canControlSelectedMatch ||
-      selectedMatch.status !== "LIVE" ||
-      remainingSeconds > 0 ||
-      isOvertime
-    ) {
-      return;
-    }
-
-    const transitionKey = `${selectedMatch.id}:${selectedMatch.updatedAt}`;
-
-    if (regulationTransitionRef.current === transitionKey) {
-      return;
-    }
-
-    regulationTransitionRef.current = transitionKey;
-
-    if (score.teamA === score.teamB) {
-      saveEventsAndMatch(
-        [
-          ...eventsForMatch,
-          createEvent(selectedMatch, {
-            clock: "00:00",
-            description: `Počinje produžetak. Pobeđuje ekipa koja prva postigne ${overtimePointsToWin} poena.`,
-            type: "START_OVERTIME",
-          }),
-        ],
-        "LIVE",
-        { startOvertime: true },
-      );
-      return;
-    }
-
-    saveEventsAndMatch(
-      [
-        ...eventsForMatch,
-        createEvent(selectedMatch, {
-          clock: "00:00",
-          description: `Isteklo je regularno vreme. ${getWinnerText(score, selectedMatch, teamMap)}`,
-          type: "FINISH_MATCH",
-        }),
-      ],
-      "FINISHED",
-    );
-  }, [
-    canControlSelectedMatch,
-    eventsForMatch,
-    isOvertime,
-    remainingSeconds,
-    saveEventsAndMatch,
-    score,
-    selectedMatch,
-    teamMap,
-  ]);
-
   function appendControlEvent(
     type: MatchEventType,
     status: MatchStatus,
@@ -598,18 +561,59 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
     appendControlEvent("RESUME_MATCH", "LIVE", "Utakmica je nastavljena");
   }
 
-  function finishMatch(reason?: string) {
-    if (!selectedMatch || !canFinishMatch) {
+  function startOvertime() {
+    if (
+      !selectedMatch ||
+      !canControlSelectedMatch ||
+      endDecision !== "OVERTIME"
+    ) {
+      return;
+    }
+
+    saveEventsAndMatch(
+      [
+        ...eventsForMatch,
+        createEvent(selectedMatch, {
+          clock: "00:00",
+          description:
+            "Počinje produžetak. Pobeđuje ekipa koja prva postigne " +
+            overtimePointsToWin +
+            " poena.",
+          type: "START_OVERTIME",
+        }),
+      ],
+      "LIVE",
+      { startOvertime: true },
+    );
+    setDismissedEndDecisionKey(undefined);
+  }
+
+  function finishMatch() {
+    if (
+      !selectedMatch ||
+      !canControlSelectedMatch ||
+      endDecision !== "FINISH"
+    ) {
       return;
     }
 
     appendControlEvent(
       "FINISH_MATCH",
       "FINISHED",
-      reason
-        ? `${reason}. ${getWinnerText(score, selectedMatch, teamMap)}`
-      : `Utakmica je završena. ${getWinnerText(score, selectedMatch, teamMap)}`,
+      "Utakmica je završena posle potvrde zapisničara. " +
+        getWinnerText(score, selectedMatch, teamMap),
     );
+    setDismissedEndDecisionKey(undefined);
+  }
+
+  function dismissEndDecision() {
+    if (endDecisionKey) {
+      setDismissedEndDecisionKey(endDecisionKey);
+    }
+  }
+
+  function showMatchDecision() {
+    setDismissedEndDecisionKey(undefined);
   }
 
   function resetMatchClock() {
@@ -682,51 +686,8 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
       scoreA: pointScore.teamA,
       scoreB: pointScore.teamB,
     };
-    const nextEvents = [...eventsForMatch, scoredPointEvent];
-    const nextScore = calculateScore(nextEvents, selectedMatch);
-    const teamScore =
-      player.teamId === selectedMatch.teamAId
-        ? nextScore.teamA
-        : nextScore.teamB;
 
-    if (isOvertime) {
-      const nextOvertimeScore = getOvertimeScore(nextScore, selectedMatch);
-
-      if (hasOvertimeWinner(nextOvertimeScore)) {
-        saveEventsAndMatch(
-          [
-            ...nextEvents,
-            createEvent(selectedMatch, {
-              clock: "00:00",
-              description: `${getTeamName(player.teamId, teamMap)} je prvi postigao ${overtimePointsToWin} poena u produžetku.`,
-              type: "FINISH_MATCH",
-            }),
-          ],
-          "FINISHED",
-        );
-        return;
-      }
-
-      saveEventsAndMatch(nextEvents);
-      return;
-    }
-
-    if (teamScore >= pointLimit) {
-      saveEventsAndMatch(
-        [
-          ...nextEvents,
-          createEvent(selectedMatch, {
-            clock,
-            description: `${getTeamName(player.teamId, teamMap)} je stigao do ${pointLimit} poena.`,
-            type: "FINISH_MATCH",
-          }),
-        ],
-        "FINISHED",
-      );
-      return;
-    }
-
-    saveEventsAndMatch(nextEvents);
+    saveEventsAndMatch([...eventsForMatch, scoredPointEvent]);
   }
 
   function updatePlayerJerseyNumber(playerId: string, jerseyNumber: number) {
@@ -1121,10 +1082,8 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
           </button>
           <button
             className="h-12 rounded-md border border-[#EF4444]/70 bg-[#0F172A] px-4 text-sm font-black text-[#FCA5A5] transition hover:bg-[#EF4444] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 xl:h-10 2xl:h-12"
-            disabled={
-              !canFinishMatch
-            }
-            onClick={() => finishMatch()}
+            disabled={!canOpenEndDecision}
+            onClick={showMatchDecision}
             type="button"
           >
             Završi
@@ -1141,6 +1100,17 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
           </button>
         )}
       </header>
+
+      <MatchDecisionPanel
+        decision={endDecision}
+        isOvertime={isOvertime}
+        onConfirmFinish={finishMatch}
+        onDismiss={dismissEndDecision}
+        onStartOvertime={startOvertime}
+        remainingSeconds={remainingSeconds}
+        score={score}
+        show={showEndDecision}
+      />
 
       <section className="mt-4 grid gap-3 xl:grid-cols-[minmax(320px,1fr)_minmax(220px,240px)_minmax(320px,1fr)] xl:items-start 2xl:mt-5 2xl:gap-4 2xl:grid-cols-[minmax(320px,1fr)_minmax(260px,300px)_minmax(320px,1fr)]">
         <TeamScorePanel
@@ -1509,6 +1479,85 @@ function TemporaryNicknameField({
         value={value}
       />
     </label>
+  );
+}
+
+function MatchDecisionPanel({
+  decision,
+  isOvertime,
+  onConfirmFinish,
+  onDismiss,
+  onStartOvertime,
+  remainingSeconds,
+  score,
+  show,
+}: {
+  decision?: MatchEndDecision;
+  isOvertime: boolean;
+  onConfirmFinish: () => void;
+  onDismiss: () => void;
+  onStartOvertime: () => void;
+  remainingSeconds: number;
+  score: ScoreBySide;
+  show: boolean;
+}) {
+  if (!show || !decision) {
+    return null;
+  }
+
+  const title =
+    decision === "OVERTIME"
+      ? "Rezultat je nerešen"
+      : isOvertime
+        ? "Proverite kraj produžetka"
+        : remainingSeconds === 0
+          ? "Regularno vreme je isteklo"
+          : "Dostignut je limit od 21 poena";
+
+  return (
+    <section
+      aria-labelledby="match-decision-title"
+      className="mt-4 rounded-lg border border-[#FACC15]/45 bg-[#1C1917] p-4 shadow-[0_18px_40px_rgba(2,6,23,0.3)]"
+      role="dialog"
+    >
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div>
+          <p className="text-xs font-black uppercase text-[#FACC15]">
+            Potvrda zapisničara
+          </p>
+          <h3
+            className="mt-1 text-xl font-black text-white"
+            id="match-decision-title"
+          >
+            {title}
+          </h3>
+          <p className="mt-2 text-sm text-[#CBD5E1]">
+            Trenutni rezultat je {score.teamA}:{score.teamB}. Možete prvo
+            dodati propušten poen, faul, asistenciju ili skok.
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            className="h-11 rounded-md border border-white/20 px-4 text-sm font-black text-white transition hover:border-[#F97316] hover:text-[#FDBA74]"
+            onClick={onDismiss}
+            type="button"
+          >
+            {decision === "OVERTIME" ? "Ne još, nastavi unos" : "Nastavi unos"}
+          </button>
+          <button
+            className="h-11 rounded-md bg-[#F97316] px-4 text-sm font-black text-[#111827] transition hover:bg-[#FACC15]"
+            onClick={
+              decision === "OVERTIME" ? onStartOvertime : onConfirmFinish
+            }
+            type="button"
+          >
+            {decision === "OVERTIME"
+              ? "Pokreni produžetak"
+              : "Potvrdi kraj utakmice"}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1962,13 +2011,6 @@ function getOvertimeScore(score: ScoreBySide, match: Match): ScoreBySide {
     teamA: Math.max(0, score.teamA - (match.overtimeStartingScoreA ?? score.teamA)),
     teamB: Math.max(0, score.teamB - (match.overtimeStartingScoreB ?? score.teamB)),
   };
-}
-
-function hasOvertimeWinner(overtimeScore: ScoreBySide) {
-  return (
-    overtimeScore.teamA >= overtimePointsToWin ||
-    overtimeScore.teamB >= overtimePointsToWin
-  );
 }
 
 function parseClockSeconds(value: string) {
