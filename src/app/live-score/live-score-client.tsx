@@ -37,6 +37,7 @@ import {
 } from "./match-event-store";
 import {
   getMatchJerseyId,
+  getVisualMatchJerseyMap,
   saveMatchJerseys,
   useMatchJerseys,
 } from "./match-jersey-store";
@@ -255,21 +256,10 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
   const tournament = selectedMatch
     ? tournaments.find((item) => item.id === selectedMatch.tournamentId)
     : activeTournament;
-  const matchJerseyMap = useMemo(() => {
-    const jerseyMap = new Map<string, number>();
-
-    if (!selectedMatch) {
-      return jerseyMap;
-    }
-
-    for (const matchJersey of matchJerseys) {
-      if (matchJersey.matchId === selectedMatch.id) {
-        jerseyMap.set(matchJersey.playerId, matchJersey.jerseyNumber);
-      }
-    }
-
-    return jerseyMap;
-  }, [matchJerseys, selectedMatch]);
+  const matchJerseyMap = useMemo(
+    () => getVisualMatchJerseyMap(matchJerseys, matches, selectedMatch),
+    [matchJerseys, matches, selectedMatch],
+  );
   const playersA = selectedMatch
     ? players
         .filter((player) => player.teamId === selectedMatch.teamAId)
@@ -1469,7 +1459,7 @@ function JerseyNumberField({
         Dres
       </span>
       <input
-        className="mt-1 h-14 w-20 rounded-md border border-[#F97316]/50 bg-[#111827] px-2 text-center text-2xl font-black text-[#FACC15] outline-none transition focus:border-[#FACC15] disabled:cursor-not-allowed disabled:border-white/10 disabled:text-[#64748B] xl:h-11 xl:w-12 xl:text-xl 2xl:h-14 2xl:w-20 2xl:text-2xl"
+        className="mt-1 h-14 w-20 appearance-none rounded-md border border-[#F97316]/50 bg-[#111827] px-2 text-center text-2xl font-black text-[#FACC15] outline-none transition focus:border-[#FACC15] disabled:cursor-not-allowed disabled:border-white/10 disabled:text-[#64748B] xl:h-11 xl:w-16 xl:text-xl 2xl:h-14 2xl:w-20 2xl:text-2xl [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         defaultValue={value ?? ""}
         disabled={disabled}
         inputMode="numeric"
