@@ -13,6 +13,7 @@ export type MatchPhase =
   | "GROUP_STAGE"
   | "QUARTER_FINAL"
   | "SEMI_FINAL"
+  | "THIRD_PLACE"
   | "FINAL";
 
 export type LegacyMatchType =
@@ -63,6 +64,7 @@ export const matchPhaseLabels: Record<MatchPhase, string> = {
   GROUP_STAGE: "Grupna faza",
   QUARTER_FINAL: "Četvrtfinale",
   SEMI_FINAL: "Polufinale",
+  THIRD_PLACE: "Za treće mesto",
 };
 
 export function getMatchPhase(match: Match): MatchPhase {
@@ -80,6 +82,10 @@ export function getMatchPhase(match: Match): MatchPhase {
 
   if (match.matchType === "FINAL") {
     return "FINAL";
+  }
+
+  if (match.matchType === "THIRD_PLACE") {
+    return "THIRD_PLACE";
   }
 
   return "GROUP_STAGE";

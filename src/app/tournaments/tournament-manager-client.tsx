@@ -86,6 +86,7 @@ type TournamentTab =
   | "PLAYERS"
   | "QUARTER_FINAL"
   | "SEMI_FINAL"
+  | "THIRD_PLACE"
   | "SETTINGS"
   | "STATS"
   | "TEAMS";
@@ -153,6 +154,7 @@ const tournamentTabs: Array<{ label: string; value: TournamentTab }> = [
   { label: "Grupna faza", value: "GROUP_STAGE" },
   { label: "Četvrtfinale", value: "QUARTER_FINAL" },
   { label: "Polufinale", value: "SEMI_FINAL" },
+  { label: "Za treće mesto", value: "THIRD_PLACE" },
   { label: "Finale", value: "FINAL" },
   { label: "Knockout stablo", value: "BRACKET" },
   { label: "Statistika", value: "STATS" },
@@ -911,6 +913,9 @@ function TournamentWorkspace({
         {effectiveActiveTab === "SEMI_FINAL" && (
           <PhaseTab matches={matches} phase="SEMI_FINAL" teams={teams} />
         )}
+        {effectiveActiveTab === "THIRD_PLACE" && (
+          <PhaseTab matches={matches} phase="THIRD_PLACE" teams={teams} />
+        )}
         {effectiveActiveTab === "FINAL" && (
           <PhaseTab matches={matches} phase="FINAL" teams={teams} />
         )}
@@ -952,6 +957,7 @@ function isPhaseTab(tab: TournamentTab): tab is MatchPhase {
     tab === "GROUP_STAGE" ||
     tab === "QUARTER_FINAL" ||
     tab === "SEMI_FINAL" ||
+    tab === "THIRD_PLACE" ||
     tab === "FINAL"
   );
 }
@@ -974,10 +980,11 @@ function OverviewTab({
         <p className="mt-2 text-sm text-[#94A3B8]">
           {tournament.city}, {tournament.country} / {tournament.location}
         </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <Metric label="Grupna faza" value={phaseCounts.GROUP_STAGE.toString()} />
           <Metric label="Četvrtfinale" value={phaseCounts.QUARTER_FINAL.toString()} />
           <Metric label="Polufinale" value={phaseCounts.SEMI_FINAL.toString()} />
+          <Metric label="Treće mesto" value={phaseCounts.THIRD_PLACE.toString()} />
           <Metric label="Finale" value={phaseCounts.FINAL.toString()} />
         </div>
       </div>
@@ -1370,6 +1377,7 @@ function getPhaseCounts(matches: Match[]) {
       GROUP_STAGE: 0,
       QUARTER_FINAL: 0,
       SEMI_FINAL: 0,
+      THIRD_PLACE: 0,
     },
   );
 }

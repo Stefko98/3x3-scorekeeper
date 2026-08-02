@@ -75,16 +75,18 @@ export function getOpeningPhase(knockoutTeams: KnockoutTeams): MatchPhase {
 export function getEnabledMatchPhases(
   format: Pick<TournamentFormatSettings, "openingPhase">,
 ): MatchPhase[] {
-  const knockoutPhases: MatchPhase[] = [
-    "QUARTER_FINAL",
-    "SEMI_FINAL",
-    "FINAL",
-  ];
+  if (format.openingPhase === "FINAL") {
+    return ["GROUP_STAGE", "FINAL"];
+  }
+
+  const knockoutPhases: MatchPhase[] = ["QUARTER_FINAL", "SEMI_FINAL"];
   const openingPhaseIndex = knockoutPhases.indexOf(format.openingPhase);
 
   return [
     "GROUP_STAGE",
     ...knockoutPhases.slice(Math.max(0, openingPhaseIndex)),
+    "THIRD_PLACE",
+    "FINAL",
   ];
 }
 

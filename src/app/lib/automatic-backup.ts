@@ -811,6 +811,7 @@ function matchPhaseLabel(phase: Match["matchPhase"]) {
     GROUP_STAGE: "Grupna faza",
     QUARTER_FINAL: "Četvrtfinale",
     SEMI_FINAL: "Polufinale",
+    THIRD_PLACE: "Za treće mesto",
   };
 
   return labels[phase] ?? phase;

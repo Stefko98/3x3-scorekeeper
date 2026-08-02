@@ -246,12 +246,16 @@ function createEmptyProgressionSpecs(bracketSize: number) {
     return [
       { phase: "SEMI_FINAL" as MatchPhase, teamAId: "", teamBId: "" },
       { phase: "SEMI_FINAL" as MatchPhase, teamAId: "", teamBId: "" },
+      { phase: "THIRD_PLACE" as MatchPhase, teamAId: "", teamBId: "" },
       { phase: "FINAL" as MatchPhase, teamAId: "", teamBId: "" },
     ];
   }
 
   if (bracketSize === 4) {
-    return [{ phase: "FINAL" as MatchPhase, teamAId: "", teamBId: "" }];
+    return [
+      { phase: "THIRD_PLACE" as MatchPhase, teamAId: "", teamBId: "" },
+      { phase: "FINAL" as MatchPhase, teamAId: "", teamBId: "" },
+    ];
   }
 
   return [];

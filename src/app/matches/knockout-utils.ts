@@ -7,6 +7,7 @@ import {
 export const knockoutPhaseOrder: MatchPhase[] = [
   "QUARTER_FINAL",
   "SEMI_FINAL",
+  "THIRD_PLACE",
   "FINAL",
 ];
 
@@ -22,9 +23,15 @@ export function applyKnockoutProgression(
 
   const winnerTeamId =
     finishedMatch.winnerTeamId ?? getWinnerTeamId(finishedMatch);
+  const loserTeamId = getLoserTeamId(finishedMatch, winnerTeamId);
   const phase = getMatchPhase(finishedMatch);
 
-  if (!winnerTeamId || phase === "GROUP_STAGE" || phase === "FINAL") {
+  if (
+    !winnerTeamId ||
+    phase === "GROUP_STAGE" ||
+    phase === "THIRD_PLACE" ||
+    phase === "FINAL"
+  ) {
     return matches;
   }
 
@@ -41,35 +48,110 @@ export function applyKnockoutProgression(
     return matches;
   }
 
-  const nextPhase = phase === "QUARTER_FINAL" ? "SEMI_FINAL" : "FINAL";
-  const targetIndex = phase === "QUARTER_FINAL" ? Math.floor(currentIndex / 2) : 0;
   const targetSlot = currentIndex % 2 === 0 ? "teamAId" : "teamBId";
-  const nextMatches = ensureTargetMatches(
-    matches,
-    finishedMatch,
-    nextPhase,
-    targetIndex,
-  );
-  const targetMatches = getPhaseMatches(
-    nextMatches,
-    finishedMatch.tournamentId,
-    nextPhase,
-  );
-  const targetMatch = targetMatches[targetIndex];
 
-  if (!targetMatch) {
-    return nextMatches;
+  if (phase === "QUARTER_FINAL") {
+    const targetIndex = Math.floor(currentIndex / 2);
+    const nextMatches = ensureTargetMatches(
+      matches,
+      finishedMatch,
+      "SEMI_FINAL",
+      targetIndex,
+    );
+    const targetMatch = getPhaseMatches(
+      nextMatches,
+      finishedMatch.tournamentId,
+      "SEMI_FINAL",
+    )[targetIndex];
+
+    return assignTeamToMatch(nextMatches, targetMatch, targetSlot, winnerTeamId);
   }
 
-  return nextMatches.map((match) =>
-    match.id === targetMatch.id
-      ? {
-          ...match,
-          [targetSlot]: winnerTeamId,
-          updatedAt: new Date().toISOString(),
-        }
-      : match,
+  if (!loserTeamId) {
+    return matches;
+  }
+
+  let nextMatches = ensureTargetMatches(
+    matches,
+    finishedMatch,
+    "THIRD_PLACE",
+    0,
   );
+  nextMatches = ensureTargetMatches(
+    nextMatches,
+    finishedMatch,
+    "FINAL",
+    0,
+  );
+  const thirdPlaceMatch = getPhaseMatches(
+    nextMatches,
+    finishedMatch.tournamentId,
+    "THIRD_PLACE",
+  )[0];
+  const finalMatch = getPhaseMatches(
+    nextMatches,
+    finishedMatch.tournamentId,
+    "FINAL",
+  )[0];
+
+  return nextMatches.map((match) => {
+    if (match.id === finalMatch?.id) {
+      return {
+        ...match,
+        [targetSlot]: winnerTeamId,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (match.id === thirdPlaceMatch?.id) {
+      return {
+        ...match,
+        [targetSlot]: loserTeamId,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    return match;
+  });
+}
+
+export function canStartKnockoutMatch(matches: Match[], matchId: string) {
+  const match = matches.find((item) => item.id === matchId);
+
+  if (!match) {
+    return false;
+  }
+
+  const phase = getMatchPhase(match);
+
+  if (phase === "THIRD_PLACE") {
+    const semiFinals = getPhaseMatches(
+      matches,
+      match.tournamentId,
+      "SEMI_FINAL",
+    );
+
+    return (
+      semiFinals.length < 2 ||
+      semiFinals.every((semiFinal) => semiFinal.status === "FINISHED")
+    );
+  }
+
+  if (phase === "FINAL") {
+    const thirdPlaceMatch = getPhaseMatches(
+      matches,
+      match.tournamentId,
+      "THIRD_PLACE",
+    )[0];
+
+    return (
+      !thirdPlaceMatch ||
+      thirdPlaceMatch.status === "FINISHED" ||
+      thirdPlaceMatch.status === "CANCELLED"
+    );
+  }
+
+  return true;
 }
 
 export function canSafelyReopenMatch(matches: Match[], matchId: string) {
@@ -85,6 +167,11 @@ export function canSafelyReopenMatch(matches: Match[], matchId: string) {
     return true;
   }
 
+  if (phase === "THIRD_PLACE") {
+    const finalMatch = getPhaseMatches(matches, match.tournamentId, "FINAL")[0];
+    return !finalMatch || finalMatch.status === "SCHEDULED";
+  }
+
   if (phase === "GROUP_STAGE") {
     return matches
       .filter(
@@ -95,9 +182,9 @@ export function canSafelyReopenMatch(matches: Match[], matchId: string) {
       .every((item) => item.status === "SCHEDULED");
   }
 
-  const targetMatch = getProgressionTargetMatch(matches, match);
-
-  return !targetMatch || targetMatch.status === "SCHEDULED";
+  return getProgressionTargets(matches, match).every(
+    (target) => !target.match || target.match.status === "SCHEDULED",
+  );
 }
 
 export function rollbackKnockoutProgression(
@@ -112,32 +199,48 @@ export function rollbackKnockoutProgression(
 
   const phase = getMatchPhase(reopenedMatch);
 
-  if (phase === "GROUP_STAGE" || phase === "FINAL") {
-    return matches;
-  }
-
-  const target = getProgressionTarget(matches, reopenedMatch);
-
-  if (!target?.match || target.match.status !== "SCHEDULED") {
+  if (
+    phase === "GROUP_STAGE" ||
+    phase === "THIRD_PLACE" ||
+    phase === "FINAL"
+  ) {
     return matches;
   }
 
   const previousWinner =
     reopenedMatch.winnerTeamId ?? getWinnerTeamId(reopenedMatch);
+  const previousLoser = getLoserTeamId(reopenedMatch, previousWinner);
+  const targets = getProgressionTargets(matches, reopenedMatch);
 
-  if (!previousWinner || target.match[target.slot] !== previousWinner) {
+  if (
+    !previousWinner ||
+    targets.some(
+      (target) => target.match && target.match.status !== "SCHEDULED",
+    )
+  ) {
     return matches;
   }
 
-  return matches.map((match) =>
-    match.id === target.match?.id
-      ? {
-          ...match,
-          [target.slot]: "",
-          updatedAt: new Date().toISOString(),
-        }
-      : match,
-  );
+  return matches.map((match) => {
+    const target = targets.find((item) => item.match?.id === match.id);
+
+    if (!target) {
+      return match;
+    }
+
+    const previousTeamId =
+      target.participant === "WINNER" ? previousWinner : previousLoser;
+
+    if (!previousTeamId || match[target.slot] !== previousTeamId) {
+      return match;
+    }
+
+    return {
+      ...match,
+      [target.slot]: "",
+      updatedAt: new Date().toISOString(),
+    };
+  });
 }
 
 export function getPhaseMatches(
@@ -232,15 +335,20 @@ function ensureTargetMatches(
   return [...matches, ...createdMatches];
 }
 
-function getProgressionTargetMatch(matches: Match[], sourceMatch: Match) {
-  return getProgressionTarget(matches, sourceMatch)?.match;
-}
+type ProgressionTarget = {
+  match?: Match;
+  participant: "LOSER" | "WINNER";
+  slot: "teamAId" | "teamBId";
+};
 
-function getProgressionTarget(matches: Match[], sourceMatch: Match) {
+function getProgressionTargets(
+  matches: Match[],
+  sourceMatch: Match,
+): ProgressionTarget[] {
   const phase = getMatchPhase(sourceMatch);
 
   if (phase !== "QUARTER_FINAL" && phase !== "SEMI_FINAL") {
-    return undefined;
+    return [];
   }
 
   const currentRoundMatches = getPhaseMatches(
@@ -253,23 +361,65 @@ function getProgressionTarget(matches: Match[], sourceMatch: Match) {
   );
 
   if (currentIndex < 0) {
-    return undefined;
+    return [];
   }
 
-  const nextPhase = phase === "QUARTER_FINAL" ? "SEMI_FINAL" : "FINAL";
-  const targetIndex = phase === "QUARTER_FINAL" ? Math.floor(currentIndex / 2) : 0;
-  const targetMatches = getPhaseMatches(
-    matches,
-    sourceMatch.tournamentId,
-    nextPhase,
-  );
-
-  return {
-    match: targetMatches[targetIndex],
-    slot: currentIndex % 2 === 0
+  const slot =
+    currentIndex % 2 === 0
       ? ("teamAId" as const)
-      : ("teamBId" as const),
-  };
+      : ("teamBId" as const);
+
+  if (phase === "QUARTER_FINAL") {
+    return [
+      {
+        match: getPhaseMatches(
+          matches,
+          sourceMatch.tournamentId,
+          "SEMI_FINAL",
+        )[Math.floor(currentIndex / 2)],
+        participant: "WINNER",
+        slot,
+      },
+    ];
+  }
+
+  return [
+    {
+      match: getPhaseMatches(matches, sourceMatch.tournamentId, "FINAL")[0],
+      participant: "WINNER",
+      slot,
+    },
+    {
+      match: getPhaseMatches(
+        matches,
+        sourceMatch.tournamentId,
+        "THIRD_PLACE",
+      )[0],
+      participant: "LOSER",
+      slot,
+    },
+  ];
+}
+
+function assignTeamToMatch(
+  matches: Match[],
+  targetMatch: Match | undefined,
+  targetSlot: "teamAId" | "teamBId",
+  teamId: string,
+) {
+  if (!targetMatch) {
+    return matches;
+  }
+
+  return matches.map((match) =>
+    match.id === targetMatch.id
+      ? {
+          ...match,
+          [targetSlot]: teamId,
+          updatedAt: new Date().toISOString(),
+        }
+      : match,
+  );
 }
 
 function getWinnerTeamId(match: Match) {
@@ -278,6 +428,14 @@ function getWinnerTeamId(match: Match) {
   }
 
   return match.scoreA > match.scoreB ? match.teamAId : match.teamBId;
+}
+
+function getLoserTeamId(match: Match, winnerTeamId?: string) {
+  if (!winnerTeamId) {
+    return undefined;
+  }
+
+  return match.teamAId === winnerTeamId ? match.teamBId : match.teamAId;
 }
 
 function compareMatches(a: Match, b: Match) {

@@ -1,4 +1,5 @@
 ﻿import type { Team } from "../teams/team-store";
+import { knockoutPhaseOrder } from "./knockout-utils";
 import { getMatchPhase, type Match } from "./match-store";
 
 export type AutoGroupPairing = {
@@ -184,7 +185,19 @@ export function orderMatchesForSchedule(matches: Match[], teams: Team[]) {
     ...getGroupMatchSections(groupMatches, teams).flatMap(
       (section) => section.matches,
     ),
-    ...otherMatches,
+    ...otherMatches.sort((matchA, matchB) => {
+      const phaseDifference =
+        knockoutPhaseOrder.indexOf(getMatchPhase(matchA)) -
+        knockoutPhaseOrder.indexOf(getMatchPhase(matchB));
+
+      return (
+        phaseDifference ||
+        (matchA.scheduledTime || matchA.createdAt).localeCompare(
+          matchB.scheduledTime || matchB.createdAt,
+        ) ||
+        matchA.id.localeCompare(matchB.id)
+      );
+    }),
   ];
 }
 

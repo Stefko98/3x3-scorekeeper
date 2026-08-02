@@ -9,6 +9,7 @@ import { ensureAutomaticKnockout } from "../matches/auto-knockout";
 import {
   applyKnockoutProgression,
   canSafelyReopenMatch,
+  canStartKnockoutMatch,
   rollbackKnockoutProgression,
 } from "../matches/knockout-utils";
 import {
@@ -312,6 +313,14 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
   const clock = formatClock(remainingSeconds);
   const canControlSelectedMatch =
     Boolean(lockableMatchId) && matchLock.lockedByCurrentDevice;
+  const canStartSelectedMatch = Boolean(
+    selectedMatch &&
+      canControlSelectedMatch &&
+      selectedMatch.status === "SCHEDULED" &&
+      teamA &&
+      teamB &&
+      canStartKnockoutMatch(matches, selectedMatch.id),
+  );
   const canEdit =
     selectedMatch?.status === "LIVE" &&
     (remainingSeconds > 0 || isOvertime) &&
@@ -557,8 +566,7 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
   function startMatch() {
     if (
       !selectedMatch ||
-      !canControlSelectedMatch ||
-      selectedMatch.status !== "SCHEDULED"
+      !canStartSelectedMatch
     ) {
       return;
     }
@@ -1089,9 +1097,7 @@ export function LiveScoreClient({ initialMatchId }: LiveScoreClientProps) {
         <div className="mt-3 grid gap-2 sm:grid-cols-4 2xl:mt-4 2xl:gap-3">
           <button
             className="h-12 rounded-md bg-[#22C55E] px-4 text-sm font-black text-[#052E16] transition hover:bg-[#86EFAC] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-[#94A3B8] xl:h-10 2xl:h-12"
-            disabled={
-              !canControlSelectedMatch || selectedMatch.status !== "SCHEDULED"
-            }
+            disabled={!canStartSelectedMatch}
             onClick={startMatch}
             type="button"
           >
@@ -2268,9 +2274,12 @@ function getMatchFilterName(match: Match, matches: Match[], teams: Team[]) {
     return "Finale";
   }
 
+  if (phase === "THIRD_PLACE") {
+    return "Za treće mesto";
+  }
+
   return phase === "SEMI_FINAL" ? "Polufinale" : "Četvrtfinale";
 }
-
 function getMatchRoundName(match: Match, matches: Match[], teams?: Team[]) {
   const phase = getMatchPhase(match);
 
@@ -2282,9 +2291,13 @@ function getMatchRoundName(match: Match, matches: Match[], teams?: Team[]) {
     return "Finale";
   }
 
-  return `${phase === "SEMI_FINAL" ? "Polufinale" : "Četvrtfinale"} ${getPhaseMatchIndex(match, matches) + 1}`;
-}
+  if (phase === "THIRD_PLACE") {
+    return "Za treće mesto";
+  }
 
+  const phaseName = phase === "SEMI_FINAL" ? "Polufinale" : "Četvrtfinale";
+  return phaseName + " " + (getPhaseMatchIndex(match, matches) + 1);
+}
 function getMatchSelectLabel(
   match: Match,
   matches: Match[],

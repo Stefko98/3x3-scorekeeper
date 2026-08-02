@@ -32,6 +32,7 @@ type BracketSlots = {
   final: BracketSlot;
   quarterFinals: BracketSlot[];
   semiFinals: BracketSlot[];
+  thirdPlace?: BracketSlot;
 };
 
 type BracketSize = 2 | 4 | 8;
@@ -43,6 +44,7 @@ type BracketLayout = {
   finalPosition: SlotPosition;
   quarterFinalPositions: SlotPosition[];
   semiFinalPositions: SlotPosition[];
+  thirdPlacePosition?: SlotPosition;
 };
 
 type SlotPosition = {
@@ -69,10 +71,11 @@ const eightTeamLayout: BracketLayout = {
     { x: 244, y: 92 },
     { x: 244, y: 428 },
   ],
+  thirdPlacePosition: { x: 480, y: 512 },
 };
 
 const fourTeamLayout: BracketLayout = {
-  canvasHeight: 330,
+  canvasHeight: 498,
   canvasWidth: 660,
   championPosition: { x: 478, y: 92 },
   finalPosition: { x: 244, y: 92 },
@@ -81,6 +84,7 @@ const fourTeamLayout: BracketLayout = {
     { x: 8, y: 8 },
     { x: 8, y: 176 },
   ],
+  thirdPlacePosition: { x: 244, y: 344 },
 };
 
 const twoTeamLayout: BracketLayout = {
@@ -164,6 +168,16 @@ export function KnockoutBracket({
             teamMap={teamMap}
           />
 
+          {slots.thirdPlace && layout.thirdPlacePosition && (
+            <MatchSlot
+              eliminatedTeamIds={eliminatedTeamIds}
+              position={layout.thirdPlacePosition}
+              showMatchLinks={showMatchLinks}
+              slot={slots.thirdPlace}
+              teamMap={teamMap}
+            />
+          )}
+
           <ChampionSlot champion={slots.champion} position={layout.championPosition} />
         </div>
       </div>
@@ -179,6 +193,10 @@ function BracketLines({ layout }: { layout: BracketLayout }) {
   const finalLeft = layout.finalPosition.x;
   const finalRight = layout.finalPosition.x + matchBoxWidth;
   const championLeft = layout.championPosition.x;
+  const thirdPlaceCenter = layout.thirdPlacePosition
+    ? centerY(layout.thirdPlacePosition)
+    : undefined;
+  const thirdPlaceLeft = layout.thirdPlacePosition?.x;
   const semiPaths =
     layout.semiFinalPositions.length === 2
       ? {
@@ -221,6 +239,34 @@ function BracketLines({ layout }: { layout: BracketLayout }) {
         <path d={`M ${finalRight} ${finalCenter} H ${championLeft}`} />
         <path d={`M ${championLeft - 18} ${championCenter - 34} V ${championCenter + 34}`} opacity="0.45" />
       </g>
+      {
+        semiPaths &&
+        thirdPlaceCenter !== undefined &&
+        thirdPlaceLeft !== undefined && (
+          <g
+            fill="none"
+            stroke="#F97316"
+            strokeDasharray="7 6"
+            strokeLinecap="round"
+            strokeWidth="2.5"
+          >
+            <BracketPath
+              fromX={semiPaths.right}
+              fromY={sCenters[0]}
+              toX={thirdPlaceLeft}
+              toY={thirdPlaceCenter}
+              viaX={semiPaths.right + 12}
+            />
+            <BracketPath
+              fromX={semiPaths.right}
+              fromY={sCenters[1]}
+              toX={thirdPlaceLeft}
+              toY={thirdPlaceCenter}
+              viaX={semiPaths.right + 12}
+            />
+          </g>
+        )
+      }
     </svg>
   );
 }
@@ -261,6 +307,19 @@ function MatchSlot({
     Boolean(match?.teamBId) &&
     Boolean(match?.teamAId && teamMap.has(match.teamAId)) &&
     Boolean(match?.teamBId && teamMap.has(match.teamBId));
+  const isThirdPlaceMatch = slot.phase === "THIRD_PLACE";
+  const teamAEliminated = Boolean(
+    match?.teamAId &&
+      (isThirdPlaceMatch
+        ? match.status === "FINISHED" && winnerTeamId !== match.teamAId
+        : eliminatedTeamIds.has(match.teamAId)),
+  );
+  const teamBEliminated = Boolean(
+    match?.teamBId &&
+      (isThirdPlaceMatch
+        ? match.status === "FINISHED" && winnerTeamId !== match.teamBId
+        : eliminatedTeamIds.has(match.teamBId)),
+  );
 
   return (
     <article
@@ -293,13 +352,15 @@ function MatchSlot({
       {match ? (
         <div className="grid gap-2">
           <TeamLine
-            eliminated={Boolean(match.teamAId && eliminatedTeamIds.has(match.teamAId))}
+            eliminated={teamAEliminated}
+            isThirdPlaceMatch={isThirdPlaceMatch}
             isWinner={winnerTeamId === match.teamAId}
             score={match.scoreA}
             teamName={getTeamName(match.teamAId, teamMap)}
           />
           <TeamLine
-            eliminated={Boolean(match.teamBId && eliminatedTeamIds.has(match.teamBId))}
+            eliminated={teamBEliminated}
+            isThirdPlaceMatch={isThirdPlaceMatch}
             isWinner={winnerTeamId === match.teamBId}
             score={match.scoreB}
             teamName={getTeamName(match.teamBId, teamMap)}
@@ -316,11 +377,13 @@ function MatchSlot({
 
 function TeamLine({
   eliminated,
+  isThirdPlaceMatch,
   isWinner,
   score,
   teamName,
 }: {
   eliminated: boolean;
+  isThirdPlaceMatch: boolean;
   isWinner: boolean;
   score: number;
   teamName: string;
@@ -338,7 +401,15 @@ function TeamLine({
       <div className="min-w-0">
         <p className="truncate text-sm font-black">{teamName}</p>
         <p className="text-[10px] font-bold text-[#94A3B8]">
-          {isWinner ? "Prosao" : eliminated ? "Ispao" : "Čeka"}
+          {isThirdPlaceMatch && isWinner
+            ? "Treće mesto"
+            : isThirdPlaceMatch && eliminated
+              ? "Četvrto mesto"
+              : isWinner
+                ? "Prošao"
+                : eliminated
+                  ? "Ispao"
+                  : "Čeka"}
         </p>
       </div>
       <p className="text-right text-base font-black">{score}</p>
@@ -404,6 +475,14 @@ function buildBracketSlots(
             2,
           )
         : [],
+    thirdPlace:
+      bracketSize >= 4
+        ? createSlot(
+            getPhaseMatches(matches, tournamentId, "THIRD_PLACE")[0],
+            "THIRD_PLACE",
+            0,
+          )
+        : undefined,
   };
 }
 

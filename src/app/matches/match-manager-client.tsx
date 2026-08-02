@@ -25,7 +25,10 @@ import {
 import { AutomaticGroupMatchesPanel } from "./automatic-group-matches-panel";
 import { AutomaticKnockoutPanel } from "./automatic-knockout-panel";
 import { KnockoutBracket } from "./knockout-bracket";
-import { applyKnockoutProgression } from "./knockout-utils";
+import {
+  applyKnockoutProgression,
+  canStartKnockoutMatch,
+} from "./knockout-utils";
 import {
   getMatchPhase,
   matchPhaseLabels,
@@ -225,6 +228,13 @@ export function MatchManagerClient() {
 
   function updateMatchStatus(matchId: string, status: MatchStatus) {
     const targetMatch = matches.find((match) => match.id === matchId);
+
+    if (
+      status === "LIVE" &&
+      (!targetMatch || !canStartKnockoutMatch(matches, matchId))
+    ) {
+      return;
+    }
 
     if (
       status === "FINISHED" &&
